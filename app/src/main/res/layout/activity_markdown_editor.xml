@@ -2,60 +2,185 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="8dp">
+    android:background="@color/qp_background"
+    android:orientation="vertical">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:layout_height="64dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="12dp"
+        android:paddingRight="16dp">
 
         <Button
-            android:id="@+id/btn_edit_mode"
+            android:id="@+id/btn_back"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@drawable/qp_icon_button"
+            android:contentDescription="返回"
+            android:text="‹"
+            android:textColor="@color/qp_text_primary"
+            android:textSize="32sp" />
+
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="编辑" />
+            android:orientation="vertical">
 
-        <Button
-            android:id="@+id/btn_preview_mode"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="预览" />
-    </LinearLayout>
+            <TextView
+                android:id="@+id/tv_document_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:textColor="@color/qp_text_primary"
+                android:textSize="17sp"
+                android:textStyle="bold" />
 
-    <HorizontalScrollView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+            <TextView
+                android:id="@+id/tv_save_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="已保存"
+                android:textColor="@color/qp_text_tertiary"
+                android:textSize="12sp" />
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:layout_height="40dp"
+            android:background="@drawable/qp_mode_container"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:padding="3dp">
 
-            <Button android:id="@+id/btn_h1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="H1" />
-            <Button android:id="@+id/btn_bold" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="B" />
-            <Button android:id="@+id/btn_italic" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="I" />
-            <Button android:id="@+id/btn_link" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="链接" />
-            <Button android:id="@+id/btn_code" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="代码" />
+            <Button
+                android:id="@+id/btn_edit_mode"
+                android:layout_width="52dp"
+                android:layout_height="34dp"
+                android:background="@drawable/qp_mode_button"
+                android:text="编辑"
+                android:textAllCaps="false"
+                android:textColor="@color/qp_text_primary"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btn_preview_mode"
+                android:layout_width="52dp"
+                android:layout_height="34dp"
+                android:background="@drawable/qp_mode_button"
+                android:text="预览"
+                android:textAllCaps="false"
+                android:textColor="@color/qp_text_primary"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/qp_divider" />
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:paddingLeft="16dp"
+        android:paddingTop="8dp"
+        android:paddingRight="16dp">
+
+        <EditText
+            android:id="@+id/et_markdown_editor"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@android:color/transparent"
+            android:fontFamily="sans"
+            android:gravity="top|start"
+            android:hint="从这里开始，记录你的想法…"
+            android:inputType="textMultiLine|textCapSentences"
+            android:padding="8dp"
+            android:textColor="@color/qp_text_primary"
+            android:textColorHint="@color/qp_text_tertiary"
+            android:textCursorDrawable="@null"
+            android:textSize="17sp" />
+
+        <WebView
+            android:id="@+id/web_markdown_preview"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <HorizontalScrollView
+        android:id="@+id/editor_toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="@color/qp_surface"
+        android:fillViewport="true"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingLeft="12dp"
+            android:paddingRight="12dp">
+
+            <Button
+                android:id="@+id/btn_h1"
+                android:layout_width="48dp"
+                android:layout_height="40dp"
+                android:background="@drawable/qp_tool_button"
+                android:text="H1"
+                android:textAllCaps="false"
+                android:textColor="@color/qp_text_primary"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btn_bold"
+                android:layout_width="48dp"
+                android:layout_height="40dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/qp_tool_button"
+                android:text="B"
+                android:textColor="@color/qp_text_primary"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btn_italic"
+                android:layout_width="48dp"
+                android:layout_height="40dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/qp_tool_button"
+                android:text="I"
+                android:textColor="@color/qp_text_primary"
+                android:textStyle="italic" />
+
+            <Button
+                android:id="@+id/btn_link"
+                android:layout_width="64dp"
+                android:layout_height="40dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/qp_tool_button"
+                android:text="链接"
+                android:textAllCaps="false"
+                android:textColor="@color/qp_text_primary"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btn_code"
+                android:layout_width="64dp"
+                android:layout_height="40dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/qp_tool_button"
+                android:text="代码"
+                android:textAllCaps="false"
+                android:textColor="@color/qp_text_primary"
+                android:textSize="13sp" />
         </LinearLayout>
     </HorizontalScrollView>
-
-    <EditText
-        android:id="@+id/et_markdown_editor"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:gravity="top|start"
-        android:hint="开始编写 Markdown..."
-        android:inputType="textMultiLine|textCapSentences"
-        android:padding="12dp" />
-
-    <WebView
-        android:id="@+id/web_markdown_preview"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:visibility="gone" />
 </LinearLayout>
