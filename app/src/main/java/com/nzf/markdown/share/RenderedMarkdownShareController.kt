@@ -2,6 +2,7 @@ package com.nzf.markdown.share
 
 import android.app.Activity
 import android.app.Application
+import android.app.ProgressDialog
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -19,13 +20,13 @@ import org.json.JSONObject
 import java.io.File
 
 /**
- * Connects the editor share button to the rendered Markdown share pipeline.
+ * Connects the editor share button to the rendered Markdown export pipeline.
  *
- * Android does not guarantee drawing for an INVISIBLE WebView. The previous
- * exporter therefore scrolled a laid-out but non-drawing WebView and produced
- * completely blank output. During export we keep the WebView VISIBLE with a
- * tiny alpha so its renderer and Canvas output remain active without showing a
- * disruptive preview flash to the user.
+ * A WebView used for Canvas capture must be both attached and genuinely VISIBLE.
+ * Moving it off-screen or reducing alpha can still cause Chromium to skip frame
+ * production on some Android versions, resulting in a blank export. During
+ * export we therefore give the preview the complete editor area and place a
+ * blocking progress dialog above it.
  */
 class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
     private val handler = Handler(Looper.getMainLooper())
@@ -41,6 +42,7 @@ class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
     private fun shareCurrentDocument(activity: MarkdownEditorActivity) {
         val editor = activity.findViewById<EditText>(R.id.et_markdown_editor) ?: return
         val preview = activity.findViewById<WebView>(R.id.web_markdown_preview) ?: return
+        val divider = activity.findViewById<View>(R.id.live_mode_divider)
         val titleView = activity.findViewById<TextView>(R.id.tv_document_title)
         val markdown = editor.text?.toString().orEmpty()
         if (markdown.trim().isEmpty()) {
@@ -49,20 +51,21 @@ class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
         }
 
         saveLatestDocument(activity, markdown)
-
-        val originalVisibility = preview.visibility
-        val originalAlpha = preview.alpha
-        val originalScrollY = preview.scrollY
-        val originalTranslationX = preview.translationX
-
-        // A VISIBLE WebView is required for reliable Canvas/WebView.draw capture.
-        // Keep it practically transparent and move it outside the visible content
-        // area only when it was not already the active preview.
-        if (originalVisibility != View.VISIBLE) {
-            preview.visibility = View.VISIBLE
-            preview.alpha = 0.01f
-            preview.translationX = preview.width.toFloat() + 2f
+        val state = ExportUiState(editor.visibility, preview.visibility, divider?.visibility ?: View.GONE)
+        val progress = ProgressDialog(activity).apply {
+            setMessage("正在渲染完整文档，请稍候…")
+            setCancelable(false)
+            setCanceledOnTouchOutside(false)
         }
+        progress.show()
+
+        // Export from a real visible layout, never from INVISIBLE, alpha=0 or off-screen.
+        editor.visibility = View.GONE
+        divider?.visibility = View.GONE
+        preview.alpha = 1f
+        preview.translationX = 0f
+        preview.visibility = View.VISIBLE
+        preview.requestLayout()
 
         preview.post {
             val source = JSONObject.quote(markdown)
@@ -71,10 +74,8 @@ class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
                     activity,
                     preview,
                     titleView?.text?.toString().orEmpty(),
-                    originalVisibility,
-                    originalAlpha,
-                    originalScrollY,
-                    originalTranslationX,
+                    state,
+                    progress,
                     0
                 )
             }
@@ -94,47 +95,34 @@ class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
         activity: MarkdownEditorActivity,
         preview: WebView,
         title: String,
-        originalVisibility: Int,
-        originalAlpha: Float,
-        originalScrollY: Int,
-        originalTranslationX: Float,
+        state: ExportUiState,
+        progress: ProgressDialog,
         attempt: Int
     ) {
-        val script = "(function(){var root=document.getElementById('content')||document.body;var imgs=document.images||[];for(var i=0;i<imgs.length;i++){if(!imgs[i].complete||imgs[i].naturalWidth===0)return 'waiting';}return root&&root.scrollHeight>0?'ready':'waiting';})()"
+        val script = "(function(){var root=document.getElementById('content')||document.body;var imgs=document.images||[];for(var i=0;i<imgs.length;i++){if(!imgs[i].complete)return 'waiting';}return root&&root.scrollHeight>0?'ready':'waiting';})()"
         preview.evaluateJavascript(script, ValueCallback { value ->
             val ready = value != null && value.contains("ready")
             if (ready || attempt >= MAX_RENDER_WAIT_ATTEMPTS) {
-                val safeTitle = if (title.isEmpty()) "Markdown" else title
-                val restorePreview = {
-                    if (!activity.isFinishing) {
-                        preview.scrollTo(0, originalScrollY)
-                        preview.translationX = originalTranslationX
-                        preview.alpha = originalAlpha
-                        preview.visibility = originalVisibility
+                preview.postDelayed({
+                    if (progress.isShowing) progress.dismiss()
+                    val safeTitle = if (title.isEmpty()) "Markdown" else title
+                    val restoreUi = {
+                        if (!activity.isFinishing) {
+                            preview.scrollTo(0, 0)
+                            editor.visibility = state.editorVisibility
+                            preview.visibility = state.previewVisibility
+                            activity.findViewById<View>(R.id.live_mode_divider)?.visibility = state.dividerVisibility
+                        }
                     }
-                }
-                val shown = RenderedMarkdownShare.showShareOptions(
-                    activity,
-                    preview,
-                    safeTitle,
-                    restorePreview
-                )
-                if (!shown) {
-                    restorePreview.invoke()
-                    Toast.makeText(activity, "内容仍在渲染，请稍后重试", Toast.LENGTH_SHORT).show()
-                }
+                    val shown = RenderedMarkdownShare.showShareOptions(activity, preview, safeTitle, restoreUi)
+                    if (!shown) {
+                        restoreUi.invoke()
+                        Toast.makeText(activity, "内容渲染失败，请稍后重试", Toast.LENGTH_SHORT).show()
+                    }
+                }, FINAL_RENDER_SETTLE_DELAY_MS)
             } else {
                 handler.postDelayed({
-                    waitForRenderedContent(
-                        activity,
-                        preview,
-                        title,
-                        originalVisibility,
-                        originalAlpha,
-                        originalScrollY,
-                        originalTranslationX,
-                        attempt + 1
-                    )
+                    waitForRenderedContent(activity, preview, title, state, progress, attempt + 1)
                 }, RENDER_WAIT_INTERVAL_MS)
             }
         })
@@ -147,8 +135,15 @@ class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
     override fun onActivityDestroyed(activity: Activity) = Unit
 
+    private data class ExportUiState(
+        val editorVisibility: Int,
+        val previewVisibility: Int,
+        val dividerVisibility: Int
+    )
+
     companion object {
         private const val RENDER_WAIT_INTERVAL_MS = 120L
         private const val MAX_RENDER_WAIT_ATTEMPTS = 50
+        private const val FINAL_RENDER_SETTLE_DELAY_MS = 250L
     }
 }
