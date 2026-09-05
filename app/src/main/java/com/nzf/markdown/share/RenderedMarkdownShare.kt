@@ -10,8 +10,7 @@ import android.support.v4.content.FileProvider
 import android.webkit.WebView
 import java.io.File
 import java.io.FileOutputStream
-import kotlin.math.ceil
-import kotlin.math.min
+import java.lang.Math
 
 /**
  * Creates shareable images from an already-rendered Markdown WebView.
@@ -28,14 +27,14 @@ object RenderedMarkdownShare {
         val width = webView.width
         if (width <= 0) return null
 
-        val contentHeight = ceil(webView.contentHeight * webView.scale).toInt()
+        val contentHeight = Math.ceil((webView.contentHeight * webView.scale).toDouble()).toInt()
         if (contentHeight <= 0) return null
 
         val slices = ArrayList<Bitmap>()
         return try {
             var offsetY = 0
             while (offsetY < contentHeight) {
-                val sliceHeight = min(MAX_SLICE_HEIGHT, contentHeight - offsetY)
+                val sliceHeight = Math.min(MAX_SLICE_HEIGHT, contentHeight - offsetY)
                 val bitmap = Bitmap.createBitmap(width, sliceHeight, Bitmap.Config.ARGB_8888)
                 val canvas = Canvas(bitmap)
                 canvas.save()
