@@ -22,11 +22,10 @@ import java.io.File
 /**
  * Connects the editor share button to the rendered Markdown export pipeline.
  *
- * A WebView used for Canvas capture must be both attached and genuinely VISIBLE.
- * Moving it off-screen or reducing alpha can still cause Chromium to skip frame
- * production on some Android versions, resulting in a blank export. During
- * export we therefore give the preview the complete editor area and place a
- * blocking progress dialog above it.
+ * Export is performed from a real, visible WebView. The previous implementation
+ * accidentally referenced the editor from a callback where it was out of scope,
+ * causing the Kotlin build failure. Keeping the editor in the explicit export
+ * state also makes UI restoration deterministic after image/PDF generation.
  */
 class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
     private val handler = Handler(Looper.getMainLooper())
@@ -59,7 +58,6 @@ class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
         }
         progress.show()
 
-        // Export from a real visible layout, never from INVISIBLE, alpha=0 or off-screen.
         editor.visibility = View.GONE
         divider?.visibility = View.GONE
         preview.alpha = 1f
@@ -72,6 +70,7 @@ class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
             preview.evaluateJavascript("renderMarkdown(" + source + ");") {
                 waitForRenderedContent(
                     activity,
+                    editor,
                     preview,
                     titleView?.text?.toString().orEmpty(),
                     state,
@@ -93,13 +92,14 @@ class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
 
     private fun waitForRenderedContent(
         activity: MarkdownEditorActivity,
+        editor: EditText,
         preview: WebView,
         title: String,
         state: ExportUiState,
         progress: ProgressDialog,
         attempt: Int
     ) {
-        val script = "(function(){var root=document.getElementById('content')||document.body;var imgs=document.images||[];for(var i=0;i<imgs.length;i++){if(!imgs[i].complete)return 'waiting';}return root&&root.scrollHeight>0?'ready':'waiting';})()"
+        val script = "(function(){var root=document.getElementById('content')||document.body;if(!root||root.scrollHeight<=0)return 'waiting';var imgs=document.images||[];for(var i=0;i<imgs.length;i++){if(!imgs[i].complete||imgs[i].naturalWidth===0)return 'waiting';}return 'ready';})()"
         preview.evaluateJavascript(script, ValueCallback { value ->
             val ready = value != null && value.contains("ready")
             if (ready || attempt >= MAX_RENDER_WAIT_ATTEMPTS) {
@@ -122,7 +122,7 @@ class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
                 }, FINAL_RENDER_SETTLE_DELAY_MS)
             } else {
                 handler.postDelayed({
-                    waitForRenderedContent(activity, preview, title, state, progress, attempt + 1)
+                    waitForRenderedContent(activity, editor, preview, title, state, progress, attempt + 1)
                 }, RENDER_WAIT_INTERVAL_MS)
             }
         })
