@@ -66,7 +66,8 @@ class MarkdownEditorActivity : AppCompatActivity() {
         titleView = findViewById(R.id.tv_document_title)
 
         val file = requireDocument()
-        titleView.text = file.nameWithoutExtension.ifBlank { "未命名文档" }
+        val documentTitle = file.nameWithoutExtension
+        titleView.text = if (documentTitle.trim().isEmpty()) "未命名文档" else documentTitle
         editor.setText(store.read(file))
         editor.setSelection(editor.text.length)
 
