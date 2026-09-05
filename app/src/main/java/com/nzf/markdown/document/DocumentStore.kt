@@ -35,6 +35,11 @@ class DocumentStore(private val context: Context) {
     }
 
     fun delete(file: File): Boolean = file.exists() && file.delete()
+
     fun save(file: File, content: String) = file.writeText(content)
+
+    /** Compatibility alias for editor write operations. */
+    fun write(file: File, content: String) = save(file, content)
+
     fun read(file: File): String = if (file.exists()) file.readText() else ""
 }
