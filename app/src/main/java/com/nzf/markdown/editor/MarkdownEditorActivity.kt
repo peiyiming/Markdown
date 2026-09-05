@@ -1,7 +1,9 @@
 package com.nzf.markdown.editor
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
+import android.graphics.Rect
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -12,6 +14,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -93,7 +96,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
         editor.setSelection(editor.text.length)
         restorePendingState(savedInstanceState)
 
-        findViewById<Button>(R.id.btn_back).setOnClickListener { finish() }
+        findViewById<Button>(R.id.btn_back).setOnClickListener { handleBackNavigation() }
         findViewById<Button>(R.id.btn_share).setOnClickListener { shareDocument() }
         titleView.setOnClickListener { showRenameDialog() }
         titleView.contentDescription = "重命名文档"
@@ -261,6 +264,37 @@ class MarkdownEditorActivity : AppCompatActivity() {
             val script = "(function(){window.scrollTo(0, " + target.coerceAtLeast(0) + "); return window.scrollY || window.pageYOffset || 0;})()"
             preview.evaluateJavascript(script) { pendingPreviewScrollY = null }
         }, 120)
+    }
+
+    private fun handleBackNavigation() {
+        if (isKeyboardVisible()) {
+            hideKeyboard()
+            return
+        }
+        saveDocument()
+        finish()
+    }
+
+    private fun isKeyboardVisible(): Boolean {
+        val visibleFrame = Rect()
+        window.decorView.getWindowVisibleDisplayFrame(visibleFrame)
+        val rootHeight = window.decorView.rootView.height
+        return rootHeight > 0 && rootHeight - visibleFrame.bottom > rootHeight / 6
+    }
+
+    private fun hideKeyboard() {
+        val inputMethodManager = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        inputMethodManager.hideSoftInputFromWindow(editor.windowToken, 0)
+        editor.clearFocus()
+    }
+
+    override fun onBackPressed() {
+        if (isKeyboardVisible()) {
+            hideKeyboard()
+            return
+        }
+        saveDocument()
+        super.onBackPressed()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
