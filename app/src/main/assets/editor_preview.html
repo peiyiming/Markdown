@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: sans-serif; padding: 16px; line-height: 1.6; color: #222; }
+    pre { overflow-x: auto; padding: 12px; background: #f5f5f5; }
+    code { background: #f5f5f5; padding: 2px 4px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; }
+  </style>
+  <script src="marked.js"></script>
+</head>
+<body>
+  <article id="content"></article>
+  <script>
+    function renderMarkdown(source) {
+      document.getElementById('content').innerHTML = marked(source || '');
+    }
+  </script>
+</body>
+</html>
