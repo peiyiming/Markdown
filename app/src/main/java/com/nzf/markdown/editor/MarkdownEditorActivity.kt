@@ -144,7 +144,12 @@ class MarkdownEditorActivity : AppCompatActivity() {
     private fun restorePendingState(state: Bundle?) {
         if (state == null) return
         restoringState = true
-        pendingRestoredMode = state.getString(STATE_EDITOR_MODE)?.let { runCatching { EditorMode.valueOf(it) }.getOrNull() } ?: EditorMode.EDIT
+        val restoredModeName = state.getString(STATE_EDITOR_MODE)
+        pendingRestoredMode = try {
+            if (restoredModeName.isNullOrEmpty()) EditorMode.EDIT else EditorMode.valueOf(restoredModeName)
+        } catch (_: IllegalArgumentException) {
+            EditorMode.EDIT
+        }
         pendingSelectionStart = state.getInt(STATE_SELECTION_START, editor.text.length).coerceIn(0, editor.text.length)
         pendingSelectionEnd = state.getInt(STATE_SELECTION_END, pendingSelectionStart).coerceIn(0, editor.text.length)
         pendingEditorScrollX = state.getInt(STATE_EDITOR_SCROLL_X, 0)
