@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.res.Resources
 import android.support.multidex.MultiDex
+import com.nzf.markdown.share.RenderedMarkdownShareController
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 
 /**
@@ -27,5 +28,6 @@ class MDApplication : Application() {
         super.onCreate()
         mContext = this
         PDFBoxResourceLoader.init(applicationContext)
+        registerActivityLifecycleCallbacks(RenderedMarkdownShareController(this))
     }
 }
