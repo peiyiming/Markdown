@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="8dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btn_edit_mode"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="编辑" />
+
+        <Button
+            android:id="@+id/btn_preview_mode"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="预览" />
+    </LinearLayout>
+
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button android:id="@+id/btn_h1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="H1" />
+            <Button android:id="@+id/btn_bold" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="B" />
+            <Button android:id="@+id/btn_italic" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="I" />
+            <Button android:id="@+id/btn_link" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="链接" />
+            <Button android:id="@+id/btn_code" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="代码" />
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <EditText
+        android:id="@+id/et_markdown_editor"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="top|start"
+        android:hint="开始编写 Markdown..."
+        android:inputType="textMultiLine|textCapSentences"
+        android:padding="12dp" />
+
+    <WebView
+        android:id="@+id/web_markdown_preview"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:visibility="gone" />
+</LinearLayout>
