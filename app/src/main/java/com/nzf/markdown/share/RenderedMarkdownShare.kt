@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Picture
 import android.net.Uri
 import android.support.v4.content.FileProvider
 import android.support.v7.app.AlertDialog
@@ -14,42 +15,63 @@ import java.io.FileOutputStream
 import java.lang.Math
 
 /**
- * Shares the rendered Markdown result rather than the raw Markdown source.
+ * Shares the complete rendered Markdown result rather than the raw source.
  *
- * Short documents expose both image and PDF sharing. Documents whose complete
- * image would exceed the configured memory or dimension budget are PDF-only;
- * the PDF exporter streams one rendered page at a time to keep memory bounded.
+ * A WebView's draw() method is clipped to the view's viewport, even when the
+ * destination Canvas is taller. capturePicture() gives us the full rendered
+ * document, so long images and text below the visible viewport are preserved.
  */
 object RenderedMarkdownShare {
     private const val MAX_IMAGE_HEIGHT = 12_000
     private const val MAX_IMAGE_MEMORY_BYTES = 48L * 1024L * 1024L
 
-    fun showShareOptions(context: Context, webView: WebView, title: String): Boolean {
-        val width = webView.width
-        val contentHeight = if (width > 0) {
-            Math.ceil((webView.contentHeight * webView.scale).toDouble()).toInt()
-        } else {
-            0
-        }
+    fun showShareOptions(
+        context: Context,
+        webView: WebView,
+        title: String,
+        onFinished: (() -> Unit)? = null
+    ): Boolean {
+        val picture = captureRenderedPicture(webView) ?: return false
+        val width = picture.width
+        val contentHeight = picture.height
         if (width <= 0 || contentHeight <= 0) return false
 
         if (canShareAsImage(width, contentHeight)) {
-            AlertDialog.Builder(context)
+            val dialog = AlertDialog.Builder(context)
                 .setTitle("选择分享格式")
                 .setItems(arrayOf("图片", "PDF")) { _, which ->
-                    if (which == 0) {
-                        if (!shareRenderedWebViewAsImage(context, webView, title)) {
-                            RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title)
+                    try {
+                        if (which == 0) {
+                            if (!shareRenderedPictureAsImage(context, picture, title)) {
+                                RenderedMarkdownPdfShare.shareRenderedPicture(context, picture, title)
+                            }
+                        } else {
+                            RenderedMarkdownPdfShare.shareRenderedPicture(context, picture, title)
                         }
-                    } else {
-                        RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title)
+                    } finally {
+                        onFinished?.invoke()
                     }
                 }
-                .show()
+                .setOnCancelListener { onFinished?.invoke() }
+                .create()
+            dialog.show()
         } else {
-            RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title)
+            try {
+                RenderedMarkdownPdfShare.shareRenderedPicture(context, picture, title)
+            } finally {
+                onFinished?.invoke()
+            }
         }
         return true
+    }
+
+    fun captureRenderedPicture(webView: WebView): Picture? {
+        return try {
+            val picture = webView.capturePicture()
+            if (picture.width > 0 && picture.height > 0) picture else null
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun canShareAsImage(width: Int, contentHeight: Int): Boolean {
@@ -58,14 +80,13 @@ object RenderedMarkdownShare {
         return estimatedBytes > 0L && estimatedBytes <= MAX_IMAGE_MEMORY_BYTES
     }
 
-    fun shareRenderedWebViewAsImage(context: Context, webView: WebView, title: String): Boolean {
-        val width = webView.width
-        if (width <= 0) return false
-        val contentHeight = Math.ceil((webView.contentHeight * webView.scale).toDouble()).toInt()
-        if (!canShareAsImage(width, contentHeight)) return false
+    private fun shareRenderedPictureAsImage(context: Context, picture: Picture, title: String): Boolean {
+        val width = picture.width
+        val height = picture.height
+        if (!canShareAsImage(width, height)) return false
 
         val bitmap = try {
-            Bitmap.createBitmap(width, contentHeight, Bitmap.Config.ARGB_8888)
+            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         } catch (_: OutOfMemoryError) {
             return false
         }
@@ -73,7 +94,7 @@ object RenderedMarkdownShare {
         return try {
             val canvas = Canvas(bitmap)
             canvas.drawColor(android.graphics.Color.WHITE)
-            webView.draw(canvas)
+            picture.draw(canvas)
             shareBitmap(context, bitmap, title)
             true
         } catch (_: Exception) {
