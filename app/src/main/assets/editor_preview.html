@@ -52,11 +52,13 @@
 
     function restoreScroll(position, version) {
       window.requestAnimationFrame(function () {
-        if (version != null && version !== renderVersion) return;
-        var maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-        var target = Math.min(position.y, maxY);
-        if (position.y > maxY && maxY > 0) target = position.ratio * maxY;
-        window.scrollTo(0, Math.max(0, target));
+        window.requestAnimationFrame(function () {
+          if (version != null && version !== renderVersion) return;
+          var maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+          var target = Math.min(position.y, maxY);
+          if (position.y > maxY && maxY > 0) target = position.ratio * maxY;
+          window.scrollTo(0, Math.max(0, target));
+        });
       });
     }
 
@@ -69,10 +71,7 @@
       function scheduleRestore() {
         if (version !== renderVersion || restoreScheduled) return;
         restoreScheduled = true;
-        window.requestAnimationFrame(function () {
-          restoreScheduled = false;
-          restoreScroll(position, version);
-        });
+        restoreScroll(position, version);
       }
 
       function settleImage(image, failed) {
@@ -94,7 +93,7 @@
       if (pending === 0) {
         settled = true;
         scheduleRestore();
-        return;
+        return false;
       }
 
       for (var i = 0; i < images.length; i++) {
@@ -116,6 +115,7 @@
         pending = 0;
         scheduleRestore();
       }, 4000);
+      return true;
     }
 
     function renderMarkdown(source) {
@@ -135,7 +135,6 @@
         if (typeof html !== 'string') throw new Error('Markdown Parser 未返回 HTML');
         content.innerHTML = html;
         prepareImages(content, previousPosition, version);
-        restoreScroll(previousPosition, version);
         return true;
       } catch (error) {
         content.innerHTML = '<div class="error">Markdown 渲染失败：' + escapeHtml(error && error.message ? error.message : '未知错误') + '</div>';
