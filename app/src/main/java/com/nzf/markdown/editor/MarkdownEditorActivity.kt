@@ -170,11 +170,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
         pendingSelectionEnd = state.getInt(STATE_SELECTION_END, pendingSelectionStart).coerceIn(0, editor.text.length)
         pendingEditorScrollX = state.getInt(STATE_EDITOR_SCROLL_X, 0)
         pendingEditorScrollY = state.getInt(STATE_EDITOR_SCROLL_Y, 0)
-        pendingPreviewScrollY = if (state.containsKey(STATE_PREVIEW_SCROLL_Y)) {
-            state.getInt(STATE_PREVIEW_SCROLL_Y)
-        } else {
-            null
-        }
+        pendingPreviewScrollY = if (state.containsKey(STATE_PREVIEW_SCROLL_Y)) state.getInt(STATE_PREVIEW_SCROLL_Y) else null
         editor.post {
             editor.setSelection(pendingSelectionStart, pendingSelectionEnd)
             editor.scrollTo(pendingEditorScrollX, pendingEditorScrollY)
@@ -196,10 +192,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
     private fun restoreEditorViewport() {
         if (pendingSelectionStart < 0) return
         editor.post {
-            editor.setSelection(
-                pendingSelectionStart.coerceIn(0, editor.text.length),
-                pendingSelectionEnd.coerceIn(0, editor.text.length)
-            )
+            editor.setSelection(pendingSelectionStart.coerceIn(0, editor.text.length), pendingSelectionEnd.coerceIn(0, editor.text.length))
             editor.scrollTo(pendingEditorScrollX, pendingEditorScrollY)
         }
     }
@@ -235,12 +228,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
             selectAll()
             setPadding(48, 8, 48, 8)
         }
-        AlertDialog.Builder(this)
-            .setTitle("重命名文档")
-            .setView(input)
-            .setNegativeButton("取消", null)
-            .setPositiveButton("保存") { _, _ -> renameDocument(input.text.toString()) }
-            .show()
+        AlertDialog.Builder(this).setTitle("重命名文档").setView(input).setNegativeButton("取消", null).setPositiveButton("保存") { _, _ -> renameDocument(input.text.toString()) }.show()
     }
 
     private fun renameDocument(name: String) {
@@ -300,11 +288,16 @@ class MarkdownEditorActivity : AppCompatActivity() {
         val content = editor.text
         val start = lineStart(editor.selectionStart)
         val end = lineEnd(editor.selectionEnd)
-        val heading = Regex("^(#{1,6})\\s+")
+        val heading = Regex("^(\\s*)(#{1,6})\\s+")
         val lines = content.substring(start, end).split("\n")
-        val allH1 = lines.all { heading.find(it)?.groupValues?.get(1) == "#" }
+        val nonBlankLines = lines.filter { it.isNotBlank() }
+        if (nonBlankLines.isEmpty()) return
+        val allH1 = nonBlankLines.all { heading.find(it)?.groupValues?.get(2) == "#" }
         val replacement = lines.joinToString("\n") { line ->
-            if (allH1) line.replaceFirst(heading, "") else "# " + line.replaceFirst(heading, "")
+            if (line.isBlank()) line else if (allH1) line.replaceFirst(heading, "$1") else {
+                val indent = line.takeWhile { it == ' ' || it == '\t' }
+                indent + "# " + line.substring(indent.length).replaceFirst(Regex("^#{1,6}\\s+"), "")
+            }
         }
         replaceSelection(start, end, replacement, start, start + replacement.length)
     }
@@ -315,15 +308,10 @@ class MarkdownEditorActivity : AppCompatActivity() {
         val lines = editor.text.substring(start, end).split("\n")
         val nonBlankLines = lines.filter { it.isNotBlank() }
         if (nonBlankLines.isEmpty()) return
-
-        val allPrefixed = nonBlankLines.all { line -> hasBlockPrefix(line, type) }
+        val allPrefixed = nonBlankLines.all { hasBlockPrefix(it, type) }
         var orderedIndex = 1
         val replacement = lines.joinToString("\n") { line ->
-            if (line.isBlank()) {
-                line
-            } else if (allPrefixed) {
-                removeBlockPrefix(line, type)
-            } else {
+            if (line.isBlank()) line else if (allPrefixed) removeBlockPrefix(line, type) else {
                 val transformed = addBlockPrefix(line, type, orderedIndex)
                 if (type == BlockType.ORDERED) orderedIndex++
                 transformed
@@ -420,8 +408,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
     }
 
     private fun insertCodeBlock(start: Int) {
-        val value = "```\n\n```"
-        replaceSelection(start, start, value, start + 4, start + 4)
+        replaceSelection(start, start, "```\n\n```", start + 4, start + 4)
     }
 
     private fun insertLink() {
@@ -461,10 +448,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
     private fun persistImagePermission(uri: Uri, resultFlags: Int) {
         val flags = resultFlags and Intent.FLAG_GRANT_READ_URI_PERMISSION
         if (flags != 0) {
-            try {
-                contentResolver.takePersistableUriPermission(uri, flags)
-            } catch (_: SecurityException) {
-            }
+            try { contentResolver.takePersistableUriPermission(uri, flags) } catch (_: SecurityException) { }
         }
     }
 
@@ -583,10 +567,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
     private fun replaceSelection(start: Int, end: Int, value: String, selectionStart: Int, selectionEnd: Int) {
         suppressEditorWatcher = true
         editor.text.replace(start, end, value)
-        editor.setSelection(
-            selectionStart.coerceIn(0, editor.text.length),
-            selectionEnd.coerceIn(0, editor.text.length)
-        )
+        editor.setSelection(selectionStart.coerceIn(0, editor.text.length), selectionEnd.coerceIn(0, editor.text.length))
         suppressEditorWatcher = false
         notifyEditorMutation()
     }
