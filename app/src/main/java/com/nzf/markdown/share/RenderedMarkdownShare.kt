@@ -7,112 +7,117 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.net.Uri
 import android.support.v4.content.FileProvider
+import android.support.v7.app.AlertDialog
 import android.webkit.WebView
 import java.io.File
 import java.io.FileOutputStream
 import java.lang.Math
 
 /**
- * Creates shareable images from an already-rendered Markdown WebView.
+ * Shares the rendered Markdown result rather than the raw Markdown source.
  *
- * Long documents are rendered as multiple consecutive PNG slices instead of
- * allocating one giant Bitmap. This keeps memory usage bounded and avoids
- * Android's maximum Bitmap dimension limits while preserving the rendered
- * Markdown result exactly as it appears in the preview.
+ * Short documents expose both image and PDF sharing. Documents whose complete
+ * image would exceed the configured memory or dimension budget are PDF-only;
+ * the PDF exporter streams one rendered page at a time to keep memory bounded.
  */
 object RenderedMarkdownShare {
-    private const val MAX_SLICE_HEIGHT = 12_000
+    private const val MAX_IMAGE_HEIGHT = 12_000
+    private const val MAX_IMAGE_MEMORY_BYTES = 48L * 1024L * 1024L
 
-    fun renderWebView(webView: WebView): List<Bitmap>? {
+    fun showShareOptions(context: Context, webView: WebView, title: String): Boolean {
         val width = webView.width
-        if (width <= 0) return null
-
-        val contentHeight = Math.ceil((webView.contentHeight * webView.scale).toDouble()).toInt()
-        if (contentHeight <= 0) return null
-
-        val slices = ArrayList<Bitmap>()
-        return try {
-            var offsetY = 0
-            while (offsetY < contentHeight) {
-                val sliceHeight = Math.min(MAX_SLICE_HEIGHT, contentHeight - offsetY)
-                val bitmap = Bitmap.createBitmap(width, sliceHeight, Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(bitmap)
-                canvas.save()
-                canvas.translate(0f, -offsetY.toFloat())
-                webView.draw(canvas)
-                canvas.restore()
-                slices.add(bitmap)
-                offsetY += sliceHeight
-            }
-            slices
-        } catch (_: OutOfMemoryError) {
-            slices.forEach { it.recycle() }
-            null
+        val contentHeight = if (width > 0) {
+            Math.ceil((webView.contentHeight * webView.scale).toDouble()).toInt()
+        } else {
+            0
         }
+        if (width <= 0 || contentHeight <= 0) return false
+
+        if (canShareAsImage(width, contentHeight)) {
+            AlertDialog.Builder(context)
+                .setTitle("选择分享格式")
+                .setItems(arrayOf("图片", "PDF")) { _, which ->
+                    if (which == 0) {
+                        if (!shareRenderedWebViewAsImage(context, webView, title)) {
+                            RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title)
+                        }
+                    } else {
+                        RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title)
+                    }
+                }
+                .show()
+        } else {
+            RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title)
+        }
+        return true
     }
 
-    fun shareRenderedWebView(context: Context, webView: WebView, title: String): Boolean {
-        val bitmaps = renderWebView(webView) ?: return false
+    private fun canShareAsImage(width: Int, contentHeight: Int): Boolean {
+        if (contentHeight > MAX_IMAGE_HEIGHT) return false
+        val estimatedBytes = width.toLong() * contentHeight.toLong() * 4L
+        return estimatedBytes > 0L && estimatedBytes <= MAX_IMAGE_MEMORY_BYTES
+    }
+
+    fun shareRenderedWebViewAsImage(context: Context, webView: WebView, title: String): Boolean {
+        val width = webView.width
+        if (width <= 0) return false
+        val contentHeight = Math.ceil((webView.contentHeight * webView.scale).toDouble()).toInt()
+        if (!canShareAsImage(width, contentHeight)) return false
+
+        val bitmap = try {
+            Bitmap.createBitmap(width, contentHeight, Bitmap.Config.ARGB_8888)
+        } catch (_: OutOfMemoryError) {
+            return false
+        }
+
         return try {
-            shareBitmaps(context, bitmaps, title)
+            val canvas = Canvas(bitmap)
+            canvas.drawColor(android.graphics.Color.WHITE)
+            webView.draw(canvas)
+            shareBitmap(context, bitmap, title)
             true
         } catch (_: Exception) {
             false
         } finally {
-            bitmaps.forEach { bitmap ->
-                if (!bitmap.isRecycled) bitmap.recycle()
-            }
+            if (!bitmap.isRecycled) bitmap.recycle()
         }
     }
 
-    fun shareBitmaps(context: Context, bitmaps: List<Bitmap>, title: String) {
-        require(bitmaps.isNotEmpty())
-
+    private fun shareBitmap(context: Context, bitmap: Bitmap, title: String) {
         val directory = File(context.cacheDir, "markdown_share")
         if (!directory.exists() && !directory.mkdirs()) {
             throw IllegalStateException("Unable to create share cache directory")
         }
+        cleanupOldImages(directory)
+
+        val file = File(directory, "markdown_${System.currentTimeMillis()}.png")
+        FileOutputStream(file).use { output ->
+            if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+                throw IllegalStateException("Unable to encode rendered Markdown image")
+            }
+            output.flush()
+        }
+
+        val uri = FileProvider.getUriForFile(
+            context,
+            context.packageName + ".fileprovider",
+            file
+        )
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_TITLE, title)
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = ClipData.newUri(context.contentResolver, title, uri)
+        }
+        context.startActivity(Intent.createChooser(intent, "分享图片"))
+    }
+
+    private fun cleanupOldImages(directory: File) {
         directory.listFiles()?.forEach { file ->
             if (file.isFile() && file.name.startsWith("markdown_") && file.name.endsWith(".png")) {
                 file.delete()
             }
         }
-
-        val uris = ArrayList<Uri>(bitmaps.size)
-        bitmaps.forEachIndexed { index, bitmap ->
-            val file = File(directory, "markdown_${System.currentTimeMillis()}_${index + 1}.png")
-            FileOutputStream(file).use { output ->
-                if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
-                    throw IllegalStateException("Unable to encode rendered Markdown image")
-                }
-                output.flush()
-            }
-            uris.add(
-                FileProvider.getUriForFile(
-                    context,
-                    context.packageName + ".fileprovider",
-                    file
-                )
-            )
-        }
-
-        val intent = if (uris.size == 1) {
-            Intent(Intent.ACTION_SEND).apply {
-                type = "image/png"
-                putExtra(Intent.EXTRA_TITLE, title)
-                putExtra(Intent.EXTRA_STREAM, uris.first())
-            }
-        } else {
-            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                type = "image/png"
-                putExtra(Intent.EXTRA_TITLE, title)
-                putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
-            }
-        }.apply {
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            clipData = ClipData.newUri(context.contentResolver, title, uris.first())
-        }
-
-        context.startActivity(Intent.createChooser(intent, "分享到"))
     }
 }
