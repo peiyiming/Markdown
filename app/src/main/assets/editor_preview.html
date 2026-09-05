@@ -11,47 +11,74 @@
     article { max-width:760px; margin:0 auto; }
     h1,h2,h3,h4,h5,h6 { color:var(--text); line-height:1.32; letter-spacing:-.01em; margin:1.6em 0 .55em; font-weight:700; }
     h1 { font-size:2em; margin-top:.4em; } h2 { font-size:1.55em; } h3 { font-size:1.22em; }
-    p { margin:0 0 1em; } a { color:var(--accent); text-decoration:none; border-bottom:1px solid rgba(47,107,95,.25); }
+    p { margin:0 0 1em; }
+    a { color:var(--accent); text-decoration:none; border-bottom:1px solid rgba(47,107,95,.25); }
     blockquote { margin:1.35em 0; padding:.15em 0 .15em 1em; color:var(--muted); border-left:3px solid var(--accent); }
-    blockquote p:last-child { margin-bottom:0; } ul,ol { padding-left:1.45em; margin:.6em 0 1.1em; } li+li { margin-top:.35em; }
+    blockquote p:last-child { margin-bottom:0; }
+    ul,ol { padding-left:1.45em; margin:.6em 0 1.1em; }
+    li+li { margin-top:.35em; }
     hr { border:0; height:1px; background:var(--line); margin:2em 0; }
     code { font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace; font-size:.86em; padding:.15em .35em; background:var(--code); border-radius:5px; }
     pre { margin:1.3em 0; padding:16px; overflow-x:auto; background:#20201E; color:#F2F2ED; border-radius:12px; line-height:1.65; }
     pre code { padding:0; background:transparent; color:inherit; font-size:.82em; }
     img { display:block; max-width:100%; height:auto; margin:1.25em auto; border-radius:10px; }
-    table { width:100%; margin:1.25em 0; border-collapse:collapse; font-size:.92em; } th,td { padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; } th { color:var(--muted); font-weight:600; background:var(--surface); }
+    table { width:100%; margin:1.25em 0; border-collapse:collapse; font-size:.92em; }
+    th,td { padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-weight:600; background:var(--surface); }
     .empty { min-height:40vh; display:flex; align-items:center; justify-content:center; color:#A0A09A; font-size:15px; }
     .error { padding:18px; color:#8A3A32; background:#FFF5F3; border-radius:12px; font-size:14px; }
   </style>
-  <script src="marked.js"></script>
+  <script src="./marked.js"></script>
 </head>
 <body>
   <article id="content"></article>
   <script>
+    function parseMarkdown(value) {
+      var parser = window.marked;
+      if (!parser) {
+        throw new Error('marked.js 未加载');
+      }
+
+      if (typeof parser.parse === 'function') {
+        return parser.parse(value, { gfm: true, breaks: true });
+      }
+
+      if (typeof parser === 'function') {
+        return parser(value, { gfm: true, breaks: true });
+      }
+
+      throw new Error('marked.js API 不兼容');
+    }
+
     function renderMarkdown(source) {
       var content = document.getElementById('content');
       var value = source == null ? '' : String(source);
+
       if (!value.trim()) {
         content.innerHTML = '<div class="empty">开始创作后，内容会显示在这里</div>';
-        return 'empty';
+        return true;
       }
+
       try {
-        var html = null;
-        if (window.marked && typeof window.marked === 'function') {
-          html = window.marked(value);
-        } else if (window.marked && typeof window.marked.parse === 'function') {
-          html = window.marked.parse(value, { breaks:true, gfm:true });
+        var html = parseMarkdown(value);
+        if (typeof html !== 'string') {
+          throw new Error('Markdown Parser 未返回 HTML');
         }
-        if (typeof html === 'string') {
-          content.innerHTML = html;
-        } else {
-          content.textContent = value;
-        }
-        return 'ok';
+        content.innerHTML = html;
+        return true;
       } catch (error) {
-        content.innerHTML = '<div class="error">预览渲染失败，请返回编辑模式检查内容。</div>';
-        return 'error';
+        content.innerHTML = '<div class="error">Markdown 渲染失败：' + escapeHtml(error && error.message ? error.message : '未知错误') + '</div>';
+        return false;
       }
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
     }
   </script>
 </body>
