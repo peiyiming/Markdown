@@ -208,21 +208,42 @@ class MarkdownEditorActivity : AppCompatActivity() {
     private fun insertImage(uri: Uri) { val start = editor.selectionStart; val prefix = if (start > 0 && editor.text[start - 1] != '\n') "\n" else ""; val value = prefix + "![图片]($uri)\n"; editor.text.insert(start, value); editor.setSelection(start + value.length); saveStatus.text = "图片已插入" }
 
     private fun continueMarkdownBlock(content: Editable, newlineIndex: Int) {
-        val previous = content.substring(lineStart(newlineIndex), newlineIndex)
+        if (isInsideCodeFence(newlineIndex)) return
+
+        val previousLineStart = lineStart(newlineIndex)
+        val previous = content.substring(previousLineStart, newlineIndex)
         val ordered = Regex("^(\\s*)(\\d+)([.)])\\s*(.*)$").matchEntire(previous)
-        if (ordered != null) { continueBlock(content, newlineIndex, ordered.groupValues[4], ordered.groupValues[1], ordered.groupValues[1] + ((ordered.groupValues[2].toIntOrNull() ?: 1) + 1) + ordered.groupValues[3] + " "); return }
+        if (ordered != null) {
+            val nextNumber = (ordered.groupValues[2].toIntOrNull() ?: 1) + 1
+            val nextPrefix = ordered.groupValues[1] + nextNumber + ordered.groupValues[3] + " "
+            continueBlock(content, previousLineStart, newlineIndex, ordered.groupValues[4], nextPrefix)
+            return
+        }
+
         val unordered = Regex("^(\\s*)([-+*])\\s*(.*)$").matchEntire(previous)
-        if (unordered != null) { continueBlock(content, newlineIndex, unordered.groupValues[3], unordered.groupValues[1], unordered.groupValues[1] + unordered.groupValues[2] + " "); return }
-        val quote = Regex("^(\\s*>\\s?)(.*)$").matchEntire(previous)
-        if (quote != null) { continueBlock(content, newlineIndex, quote.groupValues[2], "", quote.groupValues[1]); return }
-        if (isInsideCodeFence(newlineIndex)) { return }
+        if (unordered != null) {
+            val nextPrefix = unordered.groupValues[1] + unordered.groupValues[2] + " "
+            continueBlock(content, previousLineStart, newlineIndex, unordered.groupValues[3], nextPrefix)
+            return
+        }
+
+        val quote = Regex("^(\\s*(?:>\\s?)+)(.*)$").matchEntire(previous)
+        if (quote != null) {
+            continueBlock(content, previousLineStart, newlineIndex, quote.groupValues[2], quote.groupValues[1])
+        }
     }
 
-    private fun continueBlock(content: Editable, newlineIndex: Int, body: String, removePrefix: String, nextPrefix: String) {
+    private fun continueBlock(content: Editable, lineStart: Int, newlineIndex: Int, body: String, nextPrefix: String) {
         suppressEditorWatcher = true
-        if (body.trim().isEmpty()) { val removeStart = (newlineIndex - removePrefix.length).coerceAtLeast(0); content.delete(removeStart, newlineIndex); editor.setSelection(removeStart) }
-        else { content.insert(newlineIndex + 1, nextPrefix); editor.setSelection(newlineIndex + 1 + nextPrefix.length) }
-        suppressEditorWatcher = false; notifyEditorMutation()
+        if (body.trim().isEmpty()) {
+            content.delete(lineStart, newlineIndex + 1)
+            editor.setSelection(lineStart.coerceIn(0, content.length))
+        } else {
+            content.insert(newlineIndex + 1, nextPrefix)
+            editor.setSelection(newlineIndex + 1 + nextPrefix.length)
+        }
+        suppressEditorWatcher = false
+        notifyEditorMutation()
     }
 
     private fun isInsideCodeFence(position: Int): Boolean { val before = editor.text.substring(0, position); return Regex("(?m)^```.*$").findAll(before).count() % 2 == 1 }
