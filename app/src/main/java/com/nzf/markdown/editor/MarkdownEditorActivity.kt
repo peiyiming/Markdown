@@ -1,6 +1,8 @@
 package com.nzf.markdown.editor
 
 import android.annotation.SuppressLint
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -30,6 +32,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_DOCUMENT_PATH = "document_path"
         private const val AUTOSAVE_DELAY_MS = 700L
+        private const val REQUEST_PICK_IMAGE = 4101
     }
 
     private lateinit var editor: EditText
@@ -95,7 +98,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_unordered_list).setOnClickListener { prefixSelectedLines("- ") }
         findViewById<Button>(R.id.btn_ordered_list).setOnClickListener { prefixSelectedLines("1. ") }
         findViewById<Button>(R.id.btn_link).setOnClickListener { insert("[链接文本](https://)") }
-        findViewById<Button>(R.id.btn_image).setOnClickListener { insert("![图片描述](https://)") }
+        findViewById<Button>(R.id.btn_image).setOnClickListener { pickImage() }
         findViewById<Button>(R.id.btn_code).setOnClickListener { wrap("`", "`") }
 
         editor.addTextChangedListener(object : TextWatcher {
@@ -129,6 +132,41 @@ class MarkdownEditorActivity : AppCompatActivity() {
         editorToolbar.visibility = View.GONE
         editButton.isEnabled = true
         previewButton.isEnabled = false
+    }
+
+    private fun pickImage() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "image/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        startActivityForResult(intent, REQUEST_PICK_IMAGE)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_PICK_IMAGE || resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        persistImagePermission(uri, data.flags)
+        insertImage(uri)
+    }
+
+    private fun persistImagePermission(uri: Uri, resultFlags: Int) {
+        val flags = resultFlags and Intent.FLAG_GRANT_READ_URI_PERMISSION
+        if (flags == 0) return
+        try {
+            contentResolver.takePersistableUriPermission(uri, flags)
+        } catch (ignored: SecurityException) {
+            // Some document providers do not support persistable grants. The
+            // current process can still use the URI until the provider revokes it.
+        }
+    }
+
+    private fun insertImage(uri: Uri) {
+        val markdown = "![图片]($uri)"
+        insert(markdown)
+        saveStatus.text = "图片已插入"
     }
 
     private fun insert(value: String) {
