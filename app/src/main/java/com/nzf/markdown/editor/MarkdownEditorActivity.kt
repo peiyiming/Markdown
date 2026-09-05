@@ -124,7 +124,10 @@ class MarkdownEditorActivity : AppCompatActivity() {
         showEditor()
     }
 
-    private fun updateDocumentTitle(file: File) { titleView.text = file.nameWithoutExtension.ifEmpty { "未命名文档" } }
+    private fun updateDocumentTitle(file: File) {
+        val name = file.nameWithoutExtension
+        titleView.text = if (name.isEmpty()) "未命名文档" else name
+    }
 
     private fun shareDocument() {
         val markdown = editor.text.toString()
