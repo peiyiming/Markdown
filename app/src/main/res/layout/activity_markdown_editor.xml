@@ -114,6 +114,11 @@
             android:visibility="gone" />
     </FrameLayout>
 
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/qp_divider" />
+
     <HorizontalScrollView
         android:id="@+id/editor_toolbar"
         android:layout_width="match_parent"
@@ -161,12 +166,56 @@
                 android:textStyle="italic" />
 
             <Button
+                android:id="@+id/btn_quote"
+                android:layout_width="56dp"
+                android:layout_height="40dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/qp_tool_button"
+                android:text="引用"
+                android:textAllCaps="false"
+                android:textColor="@color/qp_text_primary"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btn_unordered_list"
+                android:layout_width="64dp"
+                android:layout_height="40dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/qp_tool_button"
+                android:text="列表"
+                android:textAllCaps="false"
+                android:textColor="@color/qp_text_primary"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btn_ordered_list"
+                android:layout_width="64dp"
+                android:layout_height="40dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/qp_tool_button"
+                android:text="编号"
+                android:textAllCaps="false"
+                android:textColor="@color/qp_text_primary"
+                android:textSize="13sp" />
+
+            <Button
                 android:id="@+id/btn_link"
                 android:layout_width="64dp"
                 android:layout_height="40dp"
                 android:layout_marginLeft="6dp"
                 android:background="@drawable/qp_tool_button"
                 android:text="链接"
+                android:textAllCaps="false"
+                android:textColor="@color/qp_text_primary"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btn_image"
+                android:layout_width="64dp"
+                android:layout_height="40dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/qp_tool_button"
+                android:text="图片"
                 android:textAllCaps="false"
                 android:textColor="@color/qp_text_primary"
                 android:textSize="13sp" />
