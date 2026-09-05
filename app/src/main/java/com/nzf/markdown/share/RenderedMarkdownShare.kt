@@ -24,25 +24,16 @@ object RenderedMarkdownShare {
     private const val MAX_IMAGE_MEMORY_BYTES = 48L * 1024L * 1024L
     private const val SLICE_SETTLE_DELAY_MS = 80L
 
-    fun showShareOptions(
-        context: Context,
-        webView: WebView,
-        title: String,
-        onFinished: (() -> Unit)? = null
-    ): Boolean {
+    fun showShareOptions(context: Context, webView: WebView, title: String, onFinished: (() -> Unit)? = null): Boolean {
         val width = webView.width
         val contentHeight = getContentHeight(webView)
         if (width <= 0 || contentHeight <= 0) return false
-
         if (canShareAsImage(width, contentHeight)) {
             AlertDialog.Builder(context)
                 .setTitle("选择分享格式")
                 .setItems(arrayOf("图片", "PDF")) { _, which ->
-                    if (which == 0) {
-                        shareRenderedWebViewAsImage(context, webView, title, onFinished)
-                    } else {
-                        RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title, onFinished)
-                    }
+                    if (which == 0) shareRenderedWebViewAsImage(context, webView, title, onFinished)
+                    else RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title, onFinished)
                 }
                 .setOnCancelListener { onFinished?.invoke() }
                 .show()
@@ -53,8 +44,7 @@ object RenderedMarkdownShare {
     }
 
     fun getContentHeight(webView: WebView): Int {
-        val scaledContent = (webView.contentHeight.toFloat() * webView.scale).toInt()
-        return Math.max(scaledContent, webView.computeVerticalScrollRange())
+        return (webView.contentHeight.toFloat() * webView.scale).toInt()
     }
 
     private fun canShareAsImage(width: Int, contentHeight: Int): Boolean {
@@ -63,26 +53,17 @@ object RenderedMarkdownShare {
         return estimatedBytes > 0L && estimatedBytes <= MAX_IMAGE_MEMORY_BYTES
     }
 
-    private fun shareRenderedWebViewAsImage(
-        context: Context,
-        webView: WebView,
-        title: String,
-        onFinished: (() -> Unit)?
-    ) {
+    private fun shareRenderedWebViewAsImage(context: Context, webView: WebView, title: String, onFinished: (() -> Unit)?) {
         val width = webView.width
         val contentHeight = getContentHeight(webView)
         if (!canShareAsImage(width, contentHeight)) {
             RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title, onFinished)
             return
         }
-
-        val bitmap = try {
-            Bitmap.createBitmap(width, contentHeight, Bitmap.Config.ARGB_8888)
-        } catch (_: OutOfMemoryError) {
+        val bitmap = try { Bitmap.createBitmap(width, contentHeight, Bitmap.Config.ARGB_8888) } catch (_: OutOfMemoryError) {
             RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title, onFinished)
             return
         }
-
         val originalScrollY = webView.scrollY
         captureImageSlices(webView, bitmap, 0, originalScrollY, object : SliceCallback {
             override fun onComplete() {
@@ -96,7 +77,6 @@ object RenderedMarkdownShare {
                 }
                 onFinished?.invoke()
             }
-
             override fun onError() {
                 if (!bitmap.isRecycled) bitmap.recycle()
                 webView.scrollTo(0, originalScrollY)
@@ -105,13 +85,7 @@ object RenderedMarkdownShare {
         })
     }
 
-    fun captureImageSlices(
-        webView: WebView,
-        destination: Bitmap,
-        nextOffset: Int,
-        originalScrollY: Int,
-        callback: SliceCallback
-    ) {
+    fun captureImageSlices(webView: WebView, destination: Bitmap, nextOffset: Int, originalScrollY: Int, callback: SliceCallback) {
         val contentHeight = getContentHeight(webView)
         val viewportHeight = webView.height
         if (viewportHeight <= 0 || contentHeight <= 0) {
@@ -123,7 +97,6 @@ object RenderedMarkdownShare {
             callback.onComplete()
             return
         }
-
         webView.scrollTo(0, nextOffset)
         webView.postDelayed({
             try {
@@ -135,25 +108,20 @@ object RenderedMarkdownShare {
                     callback.onComplete()
                     return@postDelayed
                 }
-
                 val slice = Bitmap.createBitmap(webView.width, captureHeight, Bitmap.Config.ARGB_8888)
                 try {
                     val sliceCanvas = Canvas(slice)
                     sliceCanvas.drawColor(android.graphics.Color.WHITE)
                     webView.draw(sliceCanvas)
-                    val destinationCanvas = Canvas(destination)
-                    destinationCanvas.drawBitmap(slice, 0f, actualOffset.toFloat(), null)
+                    Canvas(destination).drawBitmap(slice, 0f, actualOffset.toFloat(), null)
                 } finally {
                     if (!slice.isRecycled) slice.recycle()
                 }
-
                 val followingOffset = actualOffset + captureHeight
                 if (followingOffset >= contentHeight) {
                     webView.scrollTo(0, originalScrollY)
                     callback.onComplete()
-                } else {
-                    captureImageSlices(webView, destination, followingOffset, originalScrollY, callback)
-                }
+                } else captureImageSlices(webView, destination, followingOffset, originalScrollY, callback)
             } catch (_: OutOfMemoryError) {
                 callback.onError()
             } catch (_: Exception) {
@@ -164,15 +132,11 @@ object RenderedMarkdownShare {
 
     private fun shareBitmap(context: Context, bitmap: Bitmap, title: String) {
         val directory = File(context.cacheDir, "markdown_share")
-        if (!directory.exists() && !directory.mkdirs()) {
-            throw IllegalStateException("Unable to create share cache directory")
-        }
+        if (!directory.exists() && !directory.mkdirs()) throw IllegalStateException("Unable to create share cache directory")
         cleanupOldImages(directory)
         val file = File(directory, "markdown_${System.currentTimeMillis()}.png")
         FileOutputStream(file).use { output ->
-            if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
-                throw IllegalStateException("Unable to encode rendered Markdown image")
-            }
+            if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) throw IllegalStateException("Unable to encode rendered Markdown image")
             output.flush()
         }
         val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
