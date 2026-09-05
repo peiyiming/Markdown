@@ -153,12 +153,17 @@ class MarkdownEditorActivity : AppCompatActivity() {
     private fun showLivePreview() { currentMode = EditorMode.LIVE; editor.visibility = View.VISIBLE; preview.visibility = View.VISIBLE; liveModeDivider.visibility = View.VISIBLE; editorToolbar.visibility = View.VISIBLE; setModeSelection(EditorMode.LIVE); renderMarkdown(editor.text.toString()); editor.requestFocus() }
     private fun setModeSelection(mode: EditorMode) { editButton.isEnabled = mode != EditorMode.EDIT; previewButton.isEnabled = mode != EditorMode.PREVIEW; liveButton.isEnabled = mode != EditorMode.LIVE; editButton.alpha = if (mode == EditorMode.EDIT) 1f else .55f; previewButton.alpha = if (mode == EditorMode.PREVIEW) 1f else .55f; liveButton.alpha = if (mode == EditorMode.LIVE) 1f else .55f }
 
-    private fun toggleHeading() { toggleLinePrefix(Regex("^#{1,6}\\s+"), "# ") }
-    private fun toggleLinePrefix(existing: Regex, prefix: String) {
-        val content = editor.text; val start = lineStart(editor.selectionStart); val end = lineEnd(editor.selectionEnd)
+    private fun toggleHeading() {
+        val content = editor.text
+        val start = lineStart(editor.selectionStart)
+        val end = lineEnd(editor.selectionEnd)
+        val heading = Regex("^(#{1,6})\\s+")
         val lines = content.substring(start, end).split("\n")
-        val allPrefixed = lines.all { existing.containsMatchIn(it) }
-        val replacement = lines.joinToString("\n") { if (allPrefixed) it.replaceFirst(existing, "") else prefix + it }
+        val allH1 = lines.all { heading.find(it)?.groupValues?.get(1) == "#" }
+        val replacement = lines.joinToString("\n") { line ->
+            if (allH1) line.replaceFirst(heading, "")
+            else "# " + line.replaceFirst(heading, "")
+        }
         replaceSelection(start, end, replacement, start, start + replacement.length)
     }
 
@@ -190,10 +195,19 @@ class MarkdownEditorActivity : AppCompatActivity() {
     }
 
     private fun toggleCode() {
-        val start = editor.selectionStart; val end = editor.selectionEnd
-        if (start != end && editor.text.substring(start, end).contains("\n")) {
-            val selected = editor.text.substring(start, end); replaceSelection(start, end, "```\n$selected\n```", start + 4, start + 4 + selected.length)
-        } else toggleWrap("`", "`")
+        val start = editor.selectionStart
+        val end = editor.selectionEnd
+        val selected = editor.text.substring(start, end)
+        if (selected.contains("\n")) {
+            if (selected.startsWith("```\n") && selected.endsWith("\n```")) {
+                val unwrapped = selected.substring(4, selected.length - 4)
+                replaceSelection(start, end, unwrapped, start, start + unwrapped.length)
+            } else {
+                replaceSelection(start, end, "```\n$selected\n```", start + 4, start + 4 + selected.length)
+            }
+            return
+        }
+        toggleWrap("`", "`")
     }
 
     private fun insertLink() {
@@ -205,7 +219,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
     private fun pickImage() { startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"; addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) }, REQUEST_PICK_IMAGE) }
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) { super.onActivityResult(requestCode, resultCode, data); if (requestCode != REQUEST_PICK_IMAGE || resultCode != RESULT_OK) return; val uri = data?.data ?: return; persistImagePermission(uri, data.flags); insertImage(uri) }
     private fun persistImagePermission(uri: Uri, resultFlags: Int) { val flags = resultFlags and Intent.FLAG_GRANT_READ_URI_PERMISSION; if (flags != 0) try { contentResolver.takePersistableUriPermission(uri, flags) } catch (_: SecurityException) {} }
-    private fun insertImage(uri: Uri) { val start = editor.selectionStart; val prefix = if (start > 0 && editor.text[start - 1] != '\n') "\n" else ""; val value = prefix + "![图片]($uri)\n"; editor.text.insert(start, value); editor.setSelection(start + value.length); saveStatus.text = "图片已插入" }
+    private fun insertImage(uri: Uri) { val start = editor.selectionStart; val prefix = if (start > 0 && editor.text[start - 1] != '\n') "\n" else ""; val value = prefix + "![图片]($uri)\n"; editor.text.insert(start, value); editor.setSelection(start + value.length); saveStatus.text = "图片已插入"; notifyEditorMutation() }
 
     private fun continueMarkdownBlock(content: Editable, newlineIndex: Int) {
         if (isInsideCodeFence(newlineIndex)) return
@@ -228,9 +242,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
         }
 
         val quote = Regex("^(\\s*(?:>\\s?)+)(.*)$").matchEntire(previous)
-        if (quote != null) {
-            continueBlock(content, previousLineStart, newlineIndex, quote.groupValues[2], quote.groupValues[1])
-        }
+        if (quote != null) continueBlock(content, previousLineStart, newlineIndex, quote.groupValues[2], quote.groupValues[1])
     }
 
     private fun continueBlock(content: Editable, lineStart: Int, newlineIndex: Int, body: String, nextPrefix: String) {
