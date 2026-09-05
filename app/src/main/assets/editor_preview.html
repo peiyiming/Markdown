@@ -122,15 +122,13 @@
     function renderMarkdown(source) {
       var content = document.getElementById('content');
       var value = source == null ? '' : String(source);
-      var previousPosition = captureScroll();
 
       // Android may request a render repeatedly while switching modes or restoring state.
-      // Avoid reparsing and rebuilding a large DOM when the Markdown source is unchanged.
-      if (value === lastRenderedSource) {
-        restoreScroll(previousPosition, renderVersion);
-        return true;
-      }
+      // When the Markdown is unchanged, leave both the DOM and the user's current
+      // scroll position untouched.
+      if (value === lastRenderedSource) return true;
 
+      var previousPosition = captureScroll();
       var version = ++renderVersion;
       lastRenderedSource = value;
 
