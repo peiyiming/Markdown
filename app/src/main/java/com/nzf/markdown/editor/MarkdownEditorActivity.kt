@@ -17,6 +17,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.nzf.markdown.R
@@ -27,30 +28,45 @@ import java.io.File
 /**
  * Focused Markdown editor for the commercial MVP.
  *
- * The writing surface stays content-first. Formatting actions insert portable
- * Markdown while common list interactions behave like a real mobile editor.
+ * Supports both traditional manual preview and a live split view. The live
+ * renderer is debounced so WebView updates do not run for every keystroke.
  */
 class MarkdownEditorActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_DOCUMENT_PATH = "document_path"
         private const val AUTOSAVE_DELAY_MS = 700L
+        private const val LIVE_PREVIEW_DELAY_MS = 220L
         private const val REQUEST_PICK_IMAGE = 4101
+    }
+
+    private enum class EditorMode {
+        EDIT,
+        PREVIEW,
+        LIVE
     }
 
     private lateinit var editor: EditText
     private lateinit var preview: WebView
     private lateinit var editButton: Button
     private lateinit var previewButton: Button
+    private lateinit var liveButton: Button
+    private lateinit var liveModeDivider: View
     private lateinit var editorToolbar: View
     private lateinit var saveStatus: TextView
     private lateinit var titleView: TextView
     private lateinit var store: DocumentStore
     private var documentFile: File? = null
     private var previewReady = false
+    private var currentMode = EditorMode.EDIT
     private var suppressEditorWatcher = false
     private var insertedNewlineIndex = -1
     private val handler = Handler(Looper.getMainLooper())
     private val autosaveRunnable = Runnable { saveDocument() }
+    private val livePreviewRunnable = Runnable {
+        if (currentMode == EditorMode.LIVE) {
+            renderMarkdown(editor.text.toString())
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -70,6 +86,8 @@ class MarkdownEditorActivity : AppCompatActivity() {
         preview = findViewById(R.id.web_markdown_preview)
         editButton = findViewById(R.id.btn_edit_mode)
         previewButton = findViewById(R.id.btn_preview_mode)
+        liveButton = findViewById(R.id.btn_live_mode)
+        liveModeDivider = findViewById(R.id.live_mode_divider)
         editorToolbar = findViewById(R.id.editor_toolbar)
         saveStatus = findViewById(R.id.tv_save_status)
         titleView = findViewById(R.id.tv_document_title)
@@ -98,6 +116,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
 
         editButton.setOnClickListener { showEditor() }
         previewButton.setOnClickListener { showPreview() }
+        liveButton.setOnClickListener { showLivePreview() }
         findViewById<Button>(R.id.btn_h1).setOnClickListener { insertAtLineStart("# ") }
         findViewById<Button>(R.id.btn_bold).setOnClickListener { wrap("**", "**") }
         findViewById<Button>(R.id.btn_italic).setOnClickListener { wrap("*", "*") }
@@ -120,6 +139,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
 
                 if (!suppressEditorWatcher) {
                     scheduleAutosave()
+                    scheduleLivePreview()
                 }
             }
 
@@ -166,26 +186,46 @@ class MarkdownEditorActivity : AppCompatActivity() {
     }
 
     private fun showEditor() {
+        currentMode = EditorMode.EDIT
         editor.visibility = View.VISIBLE
         preview.visibility = View.GONE
+        liveModeDivider.visibility = View.GONE
         editorToolbar.visibility = View.VISIBLE
-        editButton.isEnabled = false
-        previewButton.isEnabled = true
-        editButton.alpha = 1f
-        previewButton.alpha = 0.55f
+        setModeSelection(EditorMode.EDIT)
         editor.requestFocus()
     }
 
     private fun showPreview() {
+        currentMode = EditorMode.PREVIEW
+        handler.removeCallbacks(livePreviewRunnable)
         saveDocument()
         renderMarkdown(editor.text.toString())
         editor.visibility = View.GONE
         preview.visibility = View.VISIBLE
+        liveModeDivider.visibility = View.GONE
         editorToolbar.visibility = View.GONE
-        editButton.isEnabled = true
-        previewButton.isEnabled = false
-        editButton.alpha = 0.55f
-        previewButton.alpha = 1f
+        setModeSelection(EditorMode.PREVIEW)
+    }
+
+    private fun showLivePreview() {
+        currentMode = EditorMode.LIVE
+        editor.visibility = View.VISIBLE
+        preview.visibility = View.VISIBLE
+        liveModeDivider.visibility = View.VISIBLE
+        editorToolbar.visibility = View.VISIBLE
+        setModeSelection(EditorMode.LIVE)
+        renderMarkdown(editor.text.toString())
+        editor.requestFocus()
+    }
+
+    private fun setModeSelection(mode: EditorMode) {
+        editButton.isEnabled = mode != EditorMode.EDIT
+        previewButton.isEnabled = mode != EditorMode.PREVIEW
+        liveButton.isEnabled = mode != EditorMode.LIVE
+
+        editButton.alpha = if (mode == EditorMode.EDIT) 1f else 0.55f
+        previewButton.alpha = if (mode == EditorMode.PREVIEW) 1f else 0.55f
+        liveButton.alpha = if (mode == EditorMode.LIVE) 1f else 0.55f
     }
 
     private fun pickImage() {
@@ -278,6 +318,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
             }
             suppressEditorWatcher = false
             scheduleAutosave()
+            scheduleLivePreview()
             return
         }
 
@@ -298,6 +339,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
             }
             suppressEditorWatcher = false
             scheduleAutosave()
+            scheduleLivePreview()
         }
     }
 
@@ -313,6 +355,12 @@ class MarkdownEditorActivity : AppCompatActivity() {
         saveStatus.text = "正在保存…"
         handler.removeCallbacks(autosaveRunnable)
         handler.postDelayed(autosaveRunnable, AUTOSAVE_DELAY_MS)
+    }
+
+    private fun scheduleLivePreview() {
+        if (currentMode != EditorMode.LIVE) return
+        handler.removeCallbacks(livePreviewRunnable)
+        handler.postDelayed(livePreviewRunnable, LIVE_PREVIEW_DELAY_MS)
     }
 
     private fun saveDocument() {
@@ -336,6 +384,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         handler.removeCallbacks(autosaveRunnable)
+        handler.removeCallbacks(livePreviewRunnable)
         preview.loadUrl("about:blank")
         preview.destroy()
         super.onDestroy()
