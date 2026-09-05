@@ -71,7 +71,9 @@ object RenderedMarkdownPdfShare {
             val scaledDocumentHeight = sourceHeight.toFloat() * scale
             val pageCount = Math.max(
                 1,
-                Math.ceil(scaledDocumentHeight / contentHeight.toFloat()).toInt()
+                Math.ceil(
+                    scaledDocumentHeight.toDouble() / contentHeight.toDouble()
+                ).toInt()
             )
 
             val pdfDocument = PdfDocument()
