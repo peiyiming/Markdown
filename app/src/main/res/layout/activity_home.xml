@@ -118,5 +118,32 @@
                 android:text="创建第一篇文档"
                 android:textColor="#FFFFFF" />
         </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/layout_search_empty_state"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="32dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="没有找到相关文档"
+                android:textColor="#1C1C1A"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:text="换一个关键词试试看。"
+                android:textColor="#6B6B66"
+                android:textSize="14sp" />
+        </LinearLayout>
     </FrameLayout>
 </LinearLayout>
