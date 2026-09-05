@@ -35,6 +35,7 @@
   <article id="content"></article>
   <script>
     var renderVersion = 0;
+    var lastRenderedSource = null;
 
     function parseMarkdown(value) {
       var parser = window.marked;
@@ -122,7 +123,16 @@
       var content = document.getElementById('content');
       var value = source == null ? '' : String(source);
       var previousPosition = captureScroll();
+
+      // Android may request a render repeatedly while switching modes or restoring state.
+      // Avoid reparsing and rebuilding a large DOM when the Markdown source is unchanged.
+      if (value === lastRenderedSource) {
+        restoreScroll(previousPosition, renderVersion);
+        return true;
+      }
+
       var version = ++renderVersion;
+      lastRenderedSource = value;
 
       if (!value.trim()) {
         content.innerHTML = '<div class="empty">开始创作后，内容会显示在这里</div>';
@@ -137,6 +147,7 @@
         prepareImages(content, previousPosition, version);
         return true;
       } catch (error) {
+        lastRenderedSource = null;
         content.innerHTML = '<div class="error">Markdown 渲染失败：' + escapeHtml(error && error.message ? error.message : '未知错误') + '</div>';
         restoreScroll(previousPosition, version);
         return false;
