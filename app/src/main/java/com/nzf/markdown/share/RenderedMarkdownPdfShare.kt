@@ -3,6 +3,7 @@ package com.nzf.markdown.share
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.ParcelFileDescriptor
@@ -41,7 +42,7 @@ object RenderedMarkdownPdfShare {
 
         cleanupOldPdf(directory)
         val output = File(directory, "markdown_${System.currentTimeMillis()}.pdf")
-        val adapter = webView.createPrintDocumentAdapter(safeDocumentName(title))
+        val adapter = createPrintAdapter(webView, safeDocumentName(title))
         val attributes = PrintAttributes.Builder()
             .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
             .setResolution(PrintAttributes.Resolution("markdown", "Markdown", 300, 300))
@@ -74,6 +75,15 @@ object RenderedMarkdownPdfShare {
             },
             Bundle()
         )
+    }
+
+    private fun createPrintAdapter(webView: WebView, documentName: String): PrintDocumentAdapter {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            webView.createPrintDocumentAdapter(documentName)
+        } else {
+            @Suppress("DEPRECATION")
+            webView.createPrintDocumentAdapter()
+        }
     }
 
     private fun writeDocument(
