@@ -22,8 +22,9 @@ import java.io.File
 /**
  * Focused Markdown editor for the commercial MVP.
  *
- * Editing is intentionally content-first: persistence is automatic and preview
- * shares the same visual system instead of behaving like a separate web page.
+ * The writing surface stays content-first. Formatting actions are deliberately
+ * lightweight and insert portable Markdown instead of introducing a proprietary
+ * rich-text model.
  */
 class MarkdownEditorActivity : AppCompatActivity() {
     companion object {
@@ -87,10 +88,14 @@ class MarkdownEditorActivity : AppCompatActivity() {
 
         editButton.setOnClickListener { showEditor() }
         previewButton.setOnClickListener { showPreview() }
-        findViewById<Button>(R.id.btn_h1).setOnClickListener { insert("# ") }
+        findViewById<Button>(R.id.btn_h1).setOnClickListener { insertAtLineStart("# ") }
         findViewById<Button>(R.id.btn_bold).setOnClickListener { wrap("**", "**") }
         findViewById<Button>(R.id.btn_italic).setOnClickListener { wrap("*", "*") }
+        findViewById<Button>(R.id.btn_quote).setOnClickListener { prefixSelectedLines("> ") }
+        findViewById<Button>(R.id.btn_unordered_list).setOnClickListener { prefixSelectedLines("- ") }
+        findViewById<Button>(R.id.btn_ordered_list).setOnClickListener { prefixSelectedLines("1. ") }
         findViewById<Button>(R.id.btn_link).setOnClickListener { insert("[链接文本](https://)") }
+        findViewById<Button>(R.id.btn_image).setOnClickListener { insert("![图片描述](https://)") }
         findViewById<Button>(R.id.btn_code).setOnClickListener { wrap("`", "`") }
 
         editor.addTextChangedListener(object : TextWatcher {
@@ -113,6 +118,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
         editorToolbar.visibility = View.VISIBLE
         editButton.isEnabled = false
         previewButton.isEnabled = true
+        editor.requestFocus()
     }
 
     private fun showPreview() {
@@ -129,6 +135,32 @@ class MarkdownEditorActivity : AppCompatActivity() {
         val start = editor.selectionStart.coerceAtLeast(0)
         editor.text.insert(start, value)
         editor.setSelection((start + value.length).coerceAtMost(editor.text.length))
+    }
+
+    private fun insertAtLineStart(prefix: String) {
+        val cursor = editor.selectionStart.coerceAtLeast(0)
+        val content = editor.text
+        var lineStart = cursor
+        while (lineStart > 0 && content[lineStart - 1] != '\n') lineStart--
+        content.insert(lineStart, prefix)
+        editor.setSelection(cursor + prefix.length)
+    }
+
+    private fun prefixSelectedLines(prefix: String) {
+        val content = editor.text
+        val start = editor.selectionStart.coerceAtLeast(0)
+        val end = editor.selectionEnd.coerceAtLeast(start)
+        var lineStart = start
+        while (lineStart > 0 && content[lineStart - 1] != '\n') lineStart--
+        var lineEnd = end
+        while (lineEnd < content.length && content[lineEnd] != '\n') lineEnd++
+
+        val selectedText = content.substring(lineStart, lineEnd)
+        val replacement = selectedText.split("\n").joinToString("\n") { line ->
+            if (line.startsWith(prefix)) line else prefix + line
+        }
+        content.replace(lineStart, lineEnd, replacement)
+        editor.setSelection(lineStart, lineStart + replacement.length)
     }
 
     private fun wrap(prefix: String, suffix: String) {
