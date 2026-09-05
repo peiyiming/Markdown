@@ -63,6 +63,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
         store = DocumentStore(this)
         documentFile = intent.getStringExtra(EXTRA_DOCUMENT_PATH)?.let(::File)
         if (documentFile == null) { finish(); return }
+
         editor = findViewById(R.id.et_markdown_editor)
         preview = findViewById(R.id.web_markdown_preview)
         editButton = findViewById(R.id.btn_edit_mode)
@@ -72,23 +73,30 @@ class MarkdownEditorActivity : AppCompatActivity() {
         editorToolbar = findViewById(R.id.editor_toolbar)
         saveStatus = findViewById(R.id.tv_save_status)
         titleView = findViewById(R.id.tv_document_title)
+
         val file = requireDocument()
         updateDocumentTitle(file)
         editor.setText(store.read(file))
         editor.setSelection(editor.text.length)
+
         findViewById<Button>(R.id.btn_back).setOnClickListener { finish() }
         findViewById<Button>(R.id.btn_share).setOnClickListener { shareDocument() }
         titleView.setOnClickListener { showRenameDialog() }
         titleView.contentDescription = "重命名文档"
+
         preview.settings.javaScriptEnabled = true
         preview.settings.domStorageEnabled = true
         preview.settings.allowContentAccess = true
         preview.settings.cacheMode = WebSettings.LOAD_NO_CACHE
         preview.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         preview.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView?, url: String?) { previewReady = true; renderMarkdown(editor.text.toString()) }
+            override fun onPageFinished(view: WebView?, url: String?) {
+                previewReady = true
+                renderMarkdown(editor.text.toString())
+            }
         }
         preview.loadUrl("file:///android_asset/editor_preview.html")
+
         editButton.setOnClickListener { showEditor() }
         previewButton.setOnClickListener { showPreview() }
         liveButton.setOnClickListener { showLivePreview() }
@@ -101,15 +109,19 @@ class MarkdownEditorActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_link).setOnClickListener { insertLink() }
         findViewById<Button>(R.id.btn_image).setOnClickListener { pickImage() }
         findViewById<Button>(R.id.btn_code).setOnClickListener { toggleCode() }
+
         editor.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                if (!suppressEditorWatcher && before == 0 && count == 1 && s != null && start < s.length && s[start] == '\n') insertedNewlineIndex = start else if (!suppressEditorWatcher) insertedNewlineIndex = -1
+                if (!suppressEditorWatcher && before == 0 && count == 1 && s != null && start < s.length && s[start] == '\n') insertedNewlineIndex = start
+                else if (!suppressEditorWatcher) insertedNewlineIndex = -1
                 if (!suppressEditorWatcher) { scheduleAutosave(); scheduleLivePreview() }
             }
             override fun afterTextChanged(s: Editable?) {
                 if (suppressEditorWatcher || s == null || insertedNewlineIndex < 0) return
-                val index = insertedNewlineIndex; insertedNewlineIndex = -1; continueMarkdownBlock(s, index)
+                val index = insertedNewlineIndex
+                insertedNewlineIndex = -1
+                continueMarkdownBlock(s, index)
             }
         })
         showEditor()
@@ -128,7 +140,31 @@ class MarkdownEditorActivity : AppCompatActivity() {
     private fun toggleSelectedLines(type: BlockType) { val content = editor.text; val start = lineStart(editor.selectionStart); val end = lineEnd(editor.selectionEnd); val lines = content.substring(start, end).split("\n"); val pattern = when (type) { BlockType.QUOTE -> Regex("^\\s*>\\s?"); BlockType.UNORDERED -> Regex("^(\\s*)[-+*]\\s+"); BlockType.ORDERED -> Regex("^(\\s*)\\d+[.)]\\s+"); else -> return }; val allPrefixed = lines.all { pattern.containsMatchIn(it) }; val replacement = lines.mapIndexed { index, line -> if (allPrefixed) line.replaceFirst(pattern, "") else when (type) { BlockType.QUOTE -> "> " + line; BlockType.UNORDERED -> "- " + line; BlockType.ORDERED -> "${index + 1}. " + line; else -> line } }.joinToString("\n"); replaceSelection(start, end, replacement, start, start + replacement.length) }
     private fun toggleWrap(prefix: String, suffix: String) { val start = editor.selectionStart.coerceAtLeast(0); val end = editor.selectionEnd.coerceAtLeast(start); val content = editor.text; val selected = content.substring(start, end); if (selected.isNotEmpty() && selected.startsWith(prefix) && selected.endsWith(suffix) && selected.length >= prefix.length + suffix.length) { val unwrapped = selected.substring(prefix.length, selected.length - suffix.length); replaceSelection(start, end, unwrapped, start, start + unwrapped.length); return }; if (isSelectionWrapped(content, start, end, prefix, suffix)) { suppressEditorWatcher = true; content.delete(end, end + suffix.length); content.delete(start - prefix.length, start); editor.setSelection(start - prefix.length, end - prefix.length); suppressEditorWatcher = false; notifyEditorMutation(); return }; if (selected.isEmpty()) { suppressEditorWatcher = true; content.insert(start, prefix + suffix); editor.setSelection(start + prefix.length); suppressEditorWatcher = false; notifyEditorMutation() } else replaceSelection(start, end, prefix + selected + suffix, start + prefix.length, start + prefix.length + selected.length) }
     private fun isSelectionWrapped(content: Editable, start: Int, end: Int, prefix: String, suffix: String): Boolean { if (start < prefix.length || end + suffix.length > content.length) return false; if (content.substring(start - prefix.length, start) != prefix || content.substring(end, end + suffix.length) != suffix) return false; if (prefix == "*" && suffix == "*") { val before = start - 2; val after = end + 1; if (before >= 0 && content[before] == '*') return false; if (after < content.length && content[after] == '*') return false }; return true }
-    private fun toggleCode() { val start = editor.selectionStart; val end = editor.selectionEnd; val selected = editor.text.substring(start, end); if (selected.contains("\n")) { if (selected.startsWith("```\n") && selected.endsWith("\n```")) { val unwrapped = selected.substring(4, selected.length - 4); replaceSelection(start, end, unwrapped, start, start + unwrapped.length) } else replaceSelection(start, end, "```\n$selected\n```", start + 4, start + 4 + selected.length); return }; toggleWrap("`", "`") }
+
+    private fun toggleCode() {
+        val start = editor.selectionStart
+        val end = editor.selectionEnd
+        val selected = editor.text.substring(start, end)
+        if (selected.contains("\n")) {
+            if (selected.startsWith("```\n") && selected.endsWith("\n```")) {
+                val unwrapped = selected.substring(4, selected.length - 4)
+                replaceSelection(start, end, unwrapped, start, start + unwrapped.length)
+            } else replaceSelection(start, end, "```\n$selected\n```", start + 4, start + 4 + selected.length)
+            return
+        }
+        if (selected.isNotEmpty()) { toggleWrap("`", "`"); return }
+        if (lineStart(start) == lineEnd(start)) {
+            insertCodeBlock(start)
+        } else {
+            toggleWrap("`", "`")
+        }
+    }
+
+    private fun insertCodeBlock(start: Int) {
+        val value = "```\n\n```"
+        replaceSelection(start, start, value, start + 4, start + 4)
+    }
+
     private fun insertLink() { val start = editor.selectionStart; val end = editor.selectionEnd; val selected = editor.text.substring(start, end); if (selected.isEmpty()) { val label = "链接文本"; val url = "https://"; val value = "[$label]($url)"; replaceSelection(start, end, value, start + 1, start + 1 + label.length) } else { val url = "https://"; val value = "[$selected]($url)"; val urlStart = start + selected.length + 3; replaceSelection(start, end, value, urlStart, urlStart + url.length) } }
     private fun pickImage() { startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"; addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) }, REQUEST_PICK_IMAGE) }
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) { super.onActivityResult(requestCode, resultCode, data); if (requestCode != REQUEST_PICK_IMAGE || resultCode != RESULT_OK) return; val uri = data?.data ?: return; persistImagePermission(uri, data.flags); insertImage(uri) }
@@ -136,7 +172,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
     private fun insertImage(uri: Uri) { val start = editor.selectionStart; val prefix = if (start > 0 && editor.text[start - 1] != '\n') "\n" else ""; val value = prefix + "![图片]($uri)\n"; editor.text.insert(start, value); editor.setSelection(start + value.length); saveStatus.text = "图片已插入"; notifyEditorMutation() }
 
     private fun continueMarkdownBlock(content: Editable, newlineIndex: Int) {
-        if (isInsideCodeFence(newlineIndex)) return
+        if (isInsideCodeFence(newlineIndex)) { continueCodeFence(content, newlineIndex); return }
         val previousLineStart = lineStart(newlineIndex)
         val previous = content.substring(previousLineStart, newlineIndex)
         val ordered = Regex("^(\\s*)(\\d+)([.)])\\s*(.*)$").matchEntire(previous)
@@ -145,6 +181,18 @@ class MarkdownEditorActivity : AppCompatActivity() {
         if (unordered != null) { continueListBlock(content, previousLineStart, newlineIndex, unordered.groupValues[3], unordered.groupValues[1], unordered.groupValues[2] + " "); return }
         val quote = Regex("^(\\s*(?:>\\s?)+)(.*)$").matchEntire(previous)
         if (quote != null) continueQuoteBlock(content, previousLineStart, newlineIndex, quote.groupValues[2], quote.groupValues[1])
+    }
+
+    private fun continueCodeFence(content: Editable, newlineIndex: Int) {
+        val previousLineStart = lineStart(newlineIndex)
+        val previous = content.substring(previousLineStart, newlineIndex)
+        if (previous.isNotEmpty()) return
+        suppressEditorWatcher = true
+        val insertion = newlineIndex + 1
+        content.insert(insertion, "```\n")
+        editor.setSelection(insertion + 4)
+        suppressEditorWatcher = false
+        notifyEditorMutation()
     }
 
     private fun continueListBlock(content: Editable, lineStart: Int, newlineIndex: Int, body: String, indent: String, nextMarker: String) {
