@@ -36,7 +36,27 @@ class DocumentStore(private val context: Context) {
 
     fun delete(file: File): Boolean = file.exists() && file.delete()
 
-    fun save(file: File, content: String) = file.writeText(content)
+    @Synchronized
+    fun save(file: File, content: String) {
+        val parent = file.parentFile ?: root
+        if (!parent.exists() && !parent.mkdirs()) {
+            throw IllegalStateException("Unable to create document directory")
+        }
+
+        val temp = File(parent, ".${file.name}.saving")
+        try {
+            temp.writeText(content)
+            if (file.exists() && !file.delete()) {
+                throw IllegalStateException("Unable to replace existing document")
+            }
+            if (!temp.renameTo(file)) {
+                throw IllegalStateException("Unable to finalize document save")
+            }
+        } catch (error: Exception) {
+            if (temp.exists()) temp.delete()
+            throw error
+        }
+    }
 
     /** Compatibility alias for editor write operations. */
     fun write(file: File, content: String) = save(file, content)
