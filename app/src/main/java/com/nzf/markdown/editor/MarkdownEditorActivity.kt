@@ -6,16 +6,19 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.support.v7.app.AlertDialog
 import android.support.v7.app.AppCompatActivity
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
+import android.view.WindowManager
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
+import android.widget.Toast
 import com.nzf.markdown.R
 import com.nzf.markdown.document.DocumentStore
 import org.json.JSONObject
@@ -52,6 +55,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         supportActionBar?.hide()
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         setContentView(R.layout.activity_markdown_editor)
 
         store = DocumentStore(this)
@@ -70,15 +74,17 @@ class MarkdownEditorActivity : AppCompatActivity() {
         titleView = findViewById(R.id.tv_document_title)
 
         val file = requireDocument()
-        val documentTitle = file.nameWithoutExtension
-        titleView.text = if (documentTitle.trim().isEmpty()) "未命名文档" else documentTitle
+        updateDocumentTitle(file)
         editor.setText(store.read(file))
         editor.setSelection(editor.text.length)
 
         findViewById<Button>(R.id.btn_back).setOnClickListener { finish() }
+        titleView.setOnClickListener { showRenameDialog() }
+        titleView.contentDescription = "重命名文档"
 
         preview.settings.javaScriptEnabled = true
         preview.settings.domStorageEnabled = true
+        preview.settings.allowContentAccess = true
         preview.settings.cacheMode = WebSettings.LOAD_NO_CACHE
         preview.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         preview.webViewClient = object : WebViewClient() {
@@ -113,6 +119,38 @@ class MarkdownEditorActivity : AppCompatActivity() {
             override fun afterTextChanged(s: Editable?) = Unit
         })
         showEditor()
+    }
+
+    private fun updateDocumentTitle(file: File) {
+        val documentTitle = file.nameWithoutExtension
+        titleView.text = if (documentTitle.trim().isEmpty()) "未命名文档" else documentTitle
+    }
+
+    private fun showRenameDialog() {
+        val input = EditText(this).apply {
+            setSingleLine(true)
+            setText(requireDocument().nameWithoutExtension)
+            selectAll()
+            setPadding(48, 8, 48, 8)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("重命名文档")
+            .setView(input)
+            .setNegativeButton("取消", null)
+            .setPositiveButton("保存") { _, _ -> renameDocument(input.text.toString()) }
+            .show()
+    }
+
+    private fun renameDocument(name: String) {
+        val current = requireDocument()
+        val renamed = store.rename(current, name)
+        if (renamed == null) {
+            Toast.makeText(this, "名称不能为空或已存在同名文档", Toast.LENGTH_SHORT).show()
+            return
+        }
+        documentFile = renamed
+        updateDocumentTitle(renamed)
+        saveStatus.text = "已重命名"
     }
 
     private fun showEditor() {
