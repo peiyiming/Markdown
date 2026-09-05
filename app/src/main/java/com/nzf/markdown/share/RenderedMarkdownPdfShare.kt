@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.net.Uri
+import android.graphics.Picture
 import android.support.v4.content.FileProvider
 import android.webkit.WebView
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -18,21 +18,25 @@ import java.io.IOException
 import java.lang.Math
 
 /**
- * Streams an already-rendered Markdown WebView into a multi-page PDF.
+ * Streams the complete rendered Markdown picture into a multi-page PDF.
  *
- * Only one page-sized Bitmap is allocated at a time, so ultra-long documents
- * do not require all rendered pixels to coexist in memory.
+ * Each PDF page is produced from a slice of the full WebView picture. This
+ * avoids WebView.draw() viewport clipping, so text and images below the screen
+ * remain part of the exported document while memory stays bounded.
  */
 object RenderedMarkdownPdfShare {
     private val PAGE_SIZE = PDRectangle.A4
     private const val PAGE_MARGIN = 18f
 
     fun createPdf(context: Context, webView: WebView, title: String): File? {
-        val width = webView.width
-        if (width <= 0) return null
+        val picture = RenderedMarkdownShare.captureRenderedPicture(webView) ?: return null
+        return createPdf(context, picture, title)
+    }
 
-        val contentHeight = Math.ceil((webView.contentHeight * webView.scale).toDouble()).toInt()
-        if (contentHeight <= 0) return null
+    fun createPdf(context: Context, picture: Picture, title: String): File? {
+        val width = picture.width
+        val contentHeight = picture.height
+        if (width <= 0 || contentHeight <= 0) return null
 
         val directory = File(context.cacheDir, "markdown_share")
         if (!directory.exists() && !directory.mkdirs()) return null
@@ -57,7 +61,7 @@ object RenderedMarkdownPdfShare {
                     canvas.drawColor(android.graphics.Color.WHITE)
                     canvas.save()
                     canvas.translate(0f, -offsetY.toFloat())
-                    webView.draw(canvas)
+                    picture.draw(canvas)
                     canvas.restore()
 
                     val page = PDPage(PAGE_SIZE)
@@ -99,7 +103,12 @@ object RenderedMarkdownPdfShare {
     }
 
     fun shareRenderedWebView(context: Context, webView: WebView, title: String): Boolean {
-        val pdf = createPdf(context, webView, title) ?: return false
+        val picture = RenderedMarkdownShare.captureRenderedPicture(webView) ?: return false
+        return shareRenderedPicture(context, picture, title)
+    }
+
+    fun shareRenderedPicture(context: Context, picture: Picture, title: String): Boolean {
+        val pdf = createPdf(context, picture, title) ?: return false
         return try {
             val uri = FileProvider.getUriForFile(
                 context,
