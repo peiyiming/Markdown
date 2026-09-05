@@ -21,9 +21,8 @@ class DocumentStore(context: Context) {
     }
 
     fun create(title: String): File {
-        val safeTitle = title
-            .trim()
-            .ifBlank { "Untitled" }
+        val trimmedTitle = title.trim()
+        val safeTitle = (if (trimmedTitle.isEmpty()) "Untitled" else trimmedTitle)
             .replace(Regex("[\\\\/:*?\"<>|]"), "-")
         var file = File(documentsDir, "$safeTitle.md")
         var index = 2
