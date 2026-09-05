@@ -3,27 +3,24 @@ package com.nzf.markdown.share
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.Canvas
+import android.os.Bundle
+import android.os.CancellationSignal
+import android.os.ParcelFileDescriptor
+import android.print.PageRange
+import android.print.PrintAttributes
+import android.print.PrintDocumentAdapter
 import android.support.v4.content.FileProvider
 import android.webkit.WebView
-import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.pdmodel.PDPage
-import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
-import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
-import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import java.io.File
-import java.io.IOException
 
 /**
- * Generates a PDF from the real rendered WebView, one visible slice at a time.
- * This intentionally does not use capturePicture(), because that API can leave
- * long-image and post-image content blank even when the DOM itself is complete.
+ * Generates PDF directly from the complete rendered WebView document.
+ *
+ * WebView's print pipeline is document-aware and does not depend on manually
+ * scrolling and drawing individual viewports. This is substantially more
+ * reliable for very tall images and for content that follows those images.
  */
 object RenderedMarkdownPdfShare {
-    private val PAGE_SIZE = PDRectangle.A4
-    private const val PAGE_MARGIN = 18f
-    private const val SLICE_SETTLE_DELAY_MS = 80L
 
     fun shareRenderedWebView(
         context: Context,
@@ -31,9 +28,7 @@ object RenderedMarkdownPdfShare {
         title: String,
         onFinished: (() -> Unit)? = null
     ) {
-        val width = webView.width
-        val contentHeight = RenderedMarkdownShare.getContentHeight(webView)
-        if (width <= 0 || contentHeight <= 0 || webView.height <= 0) {
+        if (webView.width <= 0 || webView.height <= 0) {
             onFinished?.invoke()
             return
         }
@@ -43,115 +38,95 @@ object RenderedMarkdownPdfShare {
             onFinished?.invoke()
             return
         }
-        val output = File(directory, "markdown_${System.currentTimeMillis()}.pdf")
-        val originalScrollY = webView.scrollY
-        val document = PDDocument()
 
-        capturePdfSlice(
-            context,
-            webView,
-            title,
-            document,
-            output,
-            originalScrollY,
-            0,
-            onFinished
+        cleanupOldPdf(directory)
+        val output = File(directory, "markdown_${System.currentTimeMillis()}.pdf")
+        val adapter = webView.createPrintDocumentAdapter(safeDocumentName(title))
+        val attributes = PrintAttributes.Builder()
+            .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+            .setResolution(PrintAttributes.Resolution("markdown", "Markdown", 300, 300))
+            .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+            .build()
+
+        adapter.onLayout(
+            null,
+            attributes,
+            null,
+            object : PrintDocumentAdapter.LayoutResultCallback() {
+                override fun onLayoutFinished(info: android.print.PrintDocumentInfo?, changed: Boolean) {
+                    if (info == null || info.pageCount == 0) {
+                        output.delete()
+                        onFinished?.invoke()
+                        return
+                    }
+                    writeDocument(context, adapter, output, title, onFinished)
+                }
+
+                override fun onLayoutFailed(error: CharSequence?) {
+                    output.delete()
+                    onFinished?.invoke()
+                }
+
+                override fun onLayoutCancelled() {
+                    output.delete()
+                    onFinished?.invoke()
+                }
+            },
+            Bundle()
         )
     }
 
-    private fun capturePdfSlice(
+    private fun writeDocument(
         context: Context,
-        webView: WebView,
-        title: String,
-        document: PDDocument,
+        adapter: PrintDocumentAdapter,
         output: File,
-        originalScrollY: Int,
-        requestedOffset: Int,
+        title: String,
         onFinished: (() -> Unit)?
     ) {
-        val contentHeight = RenderedMarkdownShare.getContentHeight(webView)
-        if (requestedOffset >= contentHeight) {
-            finishAndShare(context, webView, title, document, output, originalScrollY, onFinished)
+        val descriptor = try {
+            ParcelFileDescriptor.open(
+                output,
+                ParcelFileDescriptor.MODE_CREATE or ParcelFileDescriptor.MODE_TRUNCATE or ParcelFileDescriptor.MODE_READ_WRITE
+            )
+        } catch (_: Exception) {
+            output.delete()
+            onFinished?.invoke()
             return
         }
 
-        webView.scrollTo(0, requestedOffset)
-        webView.postDelayed({
-            try {
-                val actualOffset = webView.scrollY
-                val remaining = contentHeight - actualOffset
-                val sliceHeight = Math.min(webView.height, remaining)
-                if (sliceHeight <= 0) {
-                    finishAndShare(context, webView, title, document, output, originalScrollY, onFinished)
-                    return@postDelayed
+        adapter.onWrite(
+            arrayOf(PageRange.ALL_PAGES),
+            descriptor,
+            CancellationSignal(),
+            object : PrintDocumentAdapter.WriteResultCallback() {
+                override fun onWriteFinished(pages: Array<PageRange>) {
+                    closeDescriptor(descriptor)
+                    sharePdf(context, output, title)
+                    onFinished?.invoke()
                 }
 
-                val bitmap = Bitmap.createBitmap(webView.width, sliceHeight, Bitmap.Config.ARGB_8888)
-                try {
-                    val canvas = Canvas(bitmap)
-                    canvas.drawColor(android.graphics.Color.WHITE)
-                    webView.draw(canvas)
-                    appendPage(document, bitmap)
-                } finally {
-                    if (!bitmap.isRecycled) bitmap.recycle()
+                override fun onWriteFailed(error: CharSequence?) {
+                    closeDescriptor(descriptor)
+                    output.delete()
+                    onFinished?.invoke()
                 }
 
-                val nextOffset = actualOffset + sliceHeight
-                if (nextOffset >= contentHeight) {
-                    finishAndShare(context, webView, title, document, output, originalScrollY, onFinished)
-                } else {
-                    capturePdfSlice(
-                        context,
-                        webView,
-                        title,
-                        document,
-                        output,
-                        originalScrollY,
-                        nextOffset,
-                        onFinished
-                    )
+                override fun onWriteCancelled() {
+                    closeDescriptor(descriptor)
+                    output.delete()
+                    onFinished?.invoke()
                 }
-            } catch (_: OutOfMemoryError) {
-                fail(document, output, webView, originalScrollY, onFinished)
-            } catch (_: Exception) {
-                fail(document, output, webView, originalScrollY, onFinished)
             }
-        }, SLICE_SETTLE_DELAY_MS)
+        )
     }
 
-    private fun appendPage(document: PDDocument, bitmap: Bitmap) {
-        val page = PDPage(PAGE_SIZE)
-        document.addPage(page)
-        val drawableWidth = PAGE_SIZE.width - PAGE_MARGIN * 2f
-        val drawableHeight = PAGE_SIZE.height - PAGE_MARGIN * 2f
-        val scale = Math.min(drawableWidth / bitmap.width.toFloat(), drawableHeight / bitmap.height.toFloat())
-        val renderedWidth = bitmap.width * scale
-        val renderedHeight = bitmap.height * scale
-        val x = (PAGE_SIZE.width - renderedWidth) / 2f
-        val y = PAGE_SIZE.height - PAGE_MARGIN - renderedHeight
-        val image = LosslessFactory.createFromImage(document, bitmap)
-        val stream = PDPageContentStream(document, page)
+    private fun sharePdf(context: Context, output: File, title: String) {
         try {
-            stream.drawImage(image, x, y, renderedWidth, renderedHeight)
-        } finally {
-            stream.close()
-        }
-    }
-
-    private fun finishAndShare(
-        context: Context,
-        webView: WebView,
-        title: String,
-        document: PDDocument,
-        output: File,
-        originalScrollY: Int,
-        onFinished: (() -> Unit)?
-    ) {
-        try {
-            document.save(output)
-            document.close()
-            webView.scrollTo(0, originalScrollY)
-            val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", output)
+            val uri = FileProvider.getUriForFile(
+                context,
+                context.packageName + ".fileprovider",
+                output
+            )
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "application/pdf"
                 putExtra(Intent.EXTRA_TITLE, title)
@@ -162,29 +137,26 @@ object RenderedMarkdownPdfShare {
             context.startActivity(Intent.createChooser(intent, "分享 PDF"))
         } catch (_: Exception) {
             output.delete()
-        } finally {
-            try {
-                document.close()
-            } catch (_: IOException) {
-            }
-            webView.scrollTo(0, originalScrollY)
-            onFinished?.invoke()
         }
     }
 
-    private fun fail(
-        document: PDDocument,
-        output: File,
-        webView: WebView,
-        originalScrollY: Int,
-        onFinished: (() -> Unit)?
-    ) {
+    private fun closeDescriptor(descriptor: ParcelFileDescriptor) {
         try {
-            document.close()
-        } catch (_: IOException) {
+            descriptor.close()
+        } catch (_: Exception) {
         }
-        output.delete()
-        webView.scrollTo(0, originalScrollY)
-        onFinished?.invoke()
+    }
+
+    private fun safeDocumentName(title: String): String {
+        val normalized = title.trim().ifEmpty { "Markdown" }
+        return normalized.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+    }
+
+    private fun cleanupOldPdf(directory: File) {
+        directory.listFiles()?.forEach { file ->
+            if (file.isFile() && file.name.startsWith("markdown_") && file.name.endsWith(".pdf")) {
+                file.delete()
+            }
+        }
     }
 }
