@@ -99,7 +99,7 @@
 
       for (var i = 0; i < images.length; i++) {
         var image = images[i];
-        image.loading = 'lazy';
+        image.loading = 'eager';
         image.decoding = 'async';
         image.onload = function () { settleImage(this, false); };
         image.onerror = function () { settleImage(this, true); };
@@ -112,9 +112,9 @@
 
       window.setTimeout(function () {
         if (version !== renderVersion || settled) return;
-        for (var j = 0; j < images.length; j++) {
-          settleImage(images[j], images[j].naturalWidth === 0);
-        }
+        settled = true;
+        pending = 0;
+        scheduleRestore();
       }, 4000);
     }
 
