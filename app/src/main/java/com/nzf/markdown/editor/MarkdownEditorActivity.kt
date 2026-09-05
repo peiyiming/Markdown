@@ -1,7 +1,6 @@
 package com.nzf.markdown.editor
 
 import android.annotation.SuppressLint
-import android.graphics.Color
 import android.os.Bundle
 import android.support.v7.app.AppCompatActivity
 import android.view.View
@@ -12,19 +11,12 @@ import android.widget.Button
 import android.widget.EditText
 import com.nzf.markdown.R
 
-/**
- * MVP Markdown editor.
- *
- * Uses a native EditText for authoring and the repository's existing
- * marked.js/result.html assets for preview rendering.
- */
+/** MVP Markdown editor using native input and the bundled marked.js renderer. */
 class MarkdownEditorActivity : AppCompatActivity() {
-
     private lateinit var editor: EditText
     private lateinit var preview: WebView
     private lateinit var editButton: Button
     private lateinit var previewButton: Button
-
     private var previewReady = false
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -46,16 +38,16 @@ class MarkdownEditorActivity : AppCompatActivity() {
                 renderMarkdown(editor.text.toString())
             }
         }
-        preview.loadUrl("file:///android_asset/result.html")
+        preview.loadUrl("file:///android_asset/editor_preview.html")
 
         editButton.setOnClickListener { showEditor() }
         previewButton.setOnClickListener { showPreview() }
-
         findViewById<Button>(R.id.btn_h1).setOnClickListener { insert("# ") }
         findViewById<Button>(R.id.btn_bold).setOnClickListener { wrap("**", "**") }
         findViewById<Button>(R.id.btn_italic).setOnClickListener { wrap("*", "*") }
         findViewById<Button>(R.id.btn_link).setOnClickListener { insert("[text](https://)") }
         findViewById<Button>(R.id.btn_code).setOnClickListener { wrap("`", "`") }
+        showEditor()
     }
 
     private fun showEditor() {
@@ -89,8 +81,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
 
     private fun renderMarkdown(markdown: String) {
         if (!previewReady) return
-        val escaped = markdown
-            .replace("\\", "\\\\")
+        val escaped = markdown.replace("\\", "\\\\")
             .replace("'", "\\'")
             .replace("\n", "\\n")
             .replace("\r", "")
