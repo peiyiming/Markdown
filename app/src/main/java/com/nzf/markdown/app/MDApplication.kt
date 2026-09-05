@@ -3,6 +3,7 @@ package com.nzf.markdown.app
 import android.app.Application
 import android.content.Context
 import android.content.res.Resources
+import android.support.multidex.MultiDex
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 
 /**
@@ -15,6 +16,11 @@ class MDApplication : Application() {
         fun getContext(): Context? = mContext
 
         fun getResources() :Resources = mContext!!.resources
+    }
+
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(base)
+        MultiDex.install(this)
     }
 
     override fun onCreate() {
