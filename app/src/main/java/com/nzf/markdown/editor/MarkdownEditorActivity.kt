@@ -5,19 +5,25 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.support.v7.app.AppCompatActivity
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.View
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
-import android.widget.TextView
-import android.text.Editable
-import android.text.TextWatcher
 import com.nzf.markdown.R
+import com.nzf.markdown.document.DocumentStore
 import java.io.File
 
-/** First functional Markdown editor with local persistence and autosave. */
+/**
+ * Core Markdown editor.
+ *
+ * This activity keeps the MVP deliberately simple: local files are the source
+ * of truth, edits are debounced and persisted automatically, and previewing
+ * uses the bundled marked.js renderer.
+ */
 class MarkdownEditorActivity : AppCompatActivity() {
     companion object { const val EXTRA_DOCUMENT_PATH = "document_path" }
 
@@ -26,7 +32,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
     private lateinit var editButton: Button
     private lateinit var previewButton: Button
     private lateinit var store: DocumentStore
-    private var documentPath: String? = null
+    private var documentFile: File? = null
     private var previewReady = false
     private val handler = Handler(Looper.getMainLooper())
     private val autosaveRunnable = Runnable { saveDocument() }
@@ -35,14 +41,19 @@ class MarkdownEditorActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_markdown_editor)
+
         store = DocumentStore(this)
-        documentPath = intent.getStringExtra(EXTRA_DOCUMENT_PATH)
+        documentFile = intent.getStringExtra(EXTRA_DOCUMENT_PATH)?.let(::File)
+        if (documentFile == null) {
+            finish()
+            return
+        }
 
         editor = findViewById(R.id.et_markdown_editor)
         preview = findViewById(R.id.web_markdown_preview)
         editButton = findViewById(R.id.btn_edit_mode)
         previewButton = findViewById(R.id.btn_preview_mode)
-        documentPath?.let { editor.setText(store.load(it)) }
+        editor.setText(store.read(requireDocument()))
 
         preview.settings.javaScriptEnabled = true
         preview.settings.domStorageEnabled = true
@@ -62,11 +73,12 @@ class MarkdownEditorActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_italic).setOnClickListener { wrap("*", "*") }
         findViewById<Button>(R.id.btn_link).setOnClickListener { insert("[text](https://)") }
         findViewById<Button>(R.id.btn_code).setOnClickListener { wrap("`", "`") }
+
         editor.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 handler.removeCallbacks(autosaveRunnable)
-                handler.postDelayed(autosaveRunnable, 700)
+                handler.postDelayed(autosaveRunnable, AUTOSAVE_DELAY_MS)
             }
             override fun afterTextChanged(s: Editable?) = Unit
         })
@@ -104,13 +116,15 @@ class MarkdownEditorActivity : AppCompatActivity() {
     }
 
     private fun saveDocument() {
-        val path = documentPath ?: return
-        store.save(path, editor.text.toString())
+        documentFile?.let { store.save(it, editor.text.toString()) }
     }
+
+    private fun requireDocument(): File = checkNotNull(documentFile)
 
     private fun renderMarkdown(markdown: String) {
         if (!previewReady) return
-        val escaped = markdown.replace("\\", "\\\\")
+        val escaped = markdown
+            .replace("\\", "\\\\")
             .replace("'", "\\'")
             .replace("\n", "\\n")
             .replace("\r", "")
@@ -127,5 +141,9 @@ class MarkdownEditorActivity : AppCompatActivity() {
         preview.loadUrl("about:blank")
         preview.destroy()
         super.onDestroy()
+    }
+
+    private companion object {
+        const val AUTOSAVE_DELAY_MS = 700L
     }
 }
