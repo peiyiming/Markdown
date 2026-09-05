@@ -21,9 +21,11 @@ import java.io.File
 /**
  * Connects the editor share button to the rendered Markdown share pipeline.
  *
- * The preview remains laid out until the user finishes selecting an export
- * format. Restoring it to GONE before the image/PDF capture would collapse the
- * WebView and could produce blank or clipped exports.
+ * Android does not guarantee drawing for an INVISIBLE WebView. The previous
+ * exporter therefore scrolled a laid-out but non-drawing WebView and produced
+ * completely blank output. During export we keep the WebView VISIBLE with a
+ * tiny alpha so its renderer and Canvas output remain active without showing a
+ * disruptive preview flash to the user.
  */
 class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
     private val handler = Handler(Looper.getMainLooper())
@@ -47,8 +49,21 @@ class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
         }
 
         saveLatestDocument(activity, markdown)
+
         val originalVisibility = preview.visibility
-        if (preview.visibility == View.GONE) preview.visibility = View.INVISIBLE
+        val originalAlpha = preview.alpha
+        val originalScrollY = preview.scrollY
+        val originalTranslationX = preview.translationX
+
+        // A VISIBLE WebView is required for reliable Canvas/WebView.draw capture.
+        // Keep it practically transparent and move it outside the visible content
+        // area only when it was not already the active preview.
+        if (originalVisibility != View.VISIBLE) {
+            preview.visibility = View.VISIBLE
+            preview.alpha = 0.01f
+            preview.translationX = preview.width.toFloat() + 2f
+        }
+
         preview.post {
             val source = JSONObject.quote(markdown)
             preview.evaluateJavascript("renderMarkdown(" + source + ");") {
@@ -57,6 +72,9 @@ class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
                     preview,
                     titleView?.text?.toString().orEmpty(),
                     originalVisibility,
+                    originalAlpha,
+                    originalScrollY,
+                    originalTranslationX,
                     0
                 )
             }
@@ -77,15 +95,23 @@ class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
         preview: WebView,
         title: String,
         originalVisibility: Int,
+        originalAlpha: Float,
+        originalScrollY: Int,
+        originalTranslationX: Float,
         attempt: Int
     ) {
-        val script = "(function(){var imgs=document.images||[];for(var i=0;i<imgs.length;i++){if(!imgs[i].complete)return 'waiting';}var root=document.getElementById('content');return root&&root.scrollHeight>0?'ready':'waiting';})()"
+        val script = "(function(){var root=document.getElementById('content')||document.body;var imgs=document.images||[];for(var i=0;i<imgs.length;i++){if(!imgs[i].complete||imgs[i].naturalWidth===0)return 'waiting';}return root&&root.scrollHeight>0?'ready':'waiting';})()"
         preview.evaluateJavascript(script, ValueCallback { value ->
             val ready = value != null && value.contains("ready")
             if (ready || attempt >= MAX_RENDER_WAIT_ATTEMPTS) {
                 val safeTitle = if (title.isEmpty()) "Markdown" else title
                 val restorePreview = {
-                    if (!activity.isFinishing) preview.visibility = originalVisibility
+                    if (!activity.isFinishing) {
+                        preview.scrollTo(0, originalScrollY)
+                        preview.translationX = originalTranslationX
+                        preview.alpha = originalAlpha
+                        preview.visibility = originalVisibility
+                    }
                 }
                 val shown = RenderedMarkdownShare.showShareOptions(
                     activity,
@@ -99,7 +125,16 @@ class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
                 }
             } else {
                 handler.postDelayed({
-                    waitForRenderedContent(activity, preview, title, originalVisibility, attempt + 1)
+                    waitForRenderedContent(
+                        activity,
+                        preview,
+                        title,
+                        originalVisibility,
+                        originalAlpha,
+                        originalScrollY,
+                        originalTranslationX,
+                        attempt + 1
+                    )
                 }, RENDER_WAIT_INTERVAL_MS)
             }
         })
@@ -114,6 +149,6 @@ class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
 
     companion object {
         private const val RENDER_WAIT_INTERVAL_MS = 120L
-        private const val MAX_RENDER_WAIT_ATTEMPTS = 34
+        private const val MAX_RENDER_WAIT_ATTEMPTS = 50
     }
 }
