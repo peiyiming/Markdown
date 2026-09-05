@@ -123,10 +123,10 @@
       var content = document.getElementById('content');
       var value = source == null ? '' : String(source);
 
-      // Android may request a render repeatedly while switching modes or restoring state.
-      // When the Markdown is unchanged, leave both the DOM and the user's current
-      // scroll position untouched.
-      if (value === lastRenderedSource) return true;
+      // Preserve the current DOM for repeated renders, but retry unchanged Markdown
+      // when a previous content:// image failed so a restored URI permission can recover.
+      var hasImageErrors = content.querySelector && content.querySelector('.image-error');
+      if (value === lastRenderedSource && !hasImageErrors) return true;
 
       var previousPosition = captureScroll();
       var version = ++renderVersion;
