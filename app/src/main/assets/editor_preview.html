@@ -36,6 +36,8 @@
   <script>
     var renderVersion = 0;
     var lastRenderedSource = null;
+    var scrollRevision = 0;
+    window.addEventListener('scroll', function () { scrollRevision++; }, { passive: true });
 
     function parseMarkdown(value) {
       var parser = window.marked;
@@ -48,13 +50,14 @@
     function captureScroll() {
       var y = window.scrollY || window.pageYOffset || 0;
       var maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-      return { y: y, ratio: maxY > 0 ? y / maxY : 0 };
+      return { y: y, ratio: maxY > 0 ? y / maxY : 0, revision: scrollRevision };
     }
 
     function restoreScroll(position, version) {
       window.requestAnimationFrame(function () {
         window.requestAnimationFrame(function () {
           if (version != null && version !== renderVersion) return;
+          if (position.revision != null && position.revision !== scrollRevision) return;
           var maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
           var target = Math.min(position.y, maxY);
           if (position.y > maxY && maxY > 0) target = position.ratio * maxY;
@@ -122,9 +125,6 @@
     function renderMarkdown(source) {
       var content = document.getElementById('content');
       var value = source == null ? '' : String(source);
-
-      // Preserve the current DOM for repeated renders, but retry unchanged Markdown
-      // when a previous content:// image failed so a restored URI permission can recover.
       var hasImageErrors = content.querySelector && content.querySelector('.image-error');
       if (value === lastRenderedSource && !hasImageErrors) return true;
 
