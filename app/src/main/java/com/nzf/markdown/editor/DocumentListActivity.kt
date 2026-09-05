@@ -7,9 +7,9 @@ import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import com.nzf.markdown.R
+import com.nzf.markdown.document.DocumentStore
 import java.io.File
 
 /** First functional workspace for the Markdown product MVP. */
