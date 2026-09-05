@@ -5,24 +5,26 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
 import android.support.v4.content.FileProvider
 import android.support.v7.app.AlertDialog
+import android.view.View
 import android.webkit.WebView
 import java.io.File
 import java.io.FileOutputStream
 
 /**
- * Shares the actual rendered WebView content.
+ * Shares the complete rendered WebView document.
  *
- * WebView.capturePicture() is deprecated and can contain only the initially
- * recorded viewport. Long images then leave a blank tail in exported files.
- * This exporter scrolls through the real WebView and captures each visible
- * slice after it has been rendered, so content below a tall image is preserved.
+ * A WebView scroll screenshot is not reliable: WebView.draw() paints the
+ * current viewport and can leave the off-screen area blank. For image export
+ * we only allow documents that are safe to hold in one bitmap, temporarily lay
+ * the WebView out to its full document height, and draw the complete document
+ * in one pass. Tall documents are exported as PDF instead.
  */
 object RenderedMarkdownShare {
     private const val MAX_IMAGE_HEIGHT = 12_000
     private const val MAX_IMAGE_MEMORY_BYTES = 48L * 1024L * 1024L
-    private const val SLICE_SETTLE_DELAY_MS = 80L
 
     fun showShareOptions(context: Context, webView: WebView, title: String, onFinished: (() -> Unit)? = null): Boolean {
         val width = webView.width
@@ -38,6 +40,7 @@ object RenderedMarkdownShare {
                 .setOnCancelListener { onFinished?.invoke() }
                 .show()
         } else {
+            android.widget.Toast.makeText(context, "当前内容较长，已使用 PDF 分享以保证完整内容", android.widget.Toast.LENGTH_LONG).show()
             RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title, onFinished)
         }
         return true
@@ -60,74 +63,60 @@ object RenderedMarkdownShare {
             RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title, onFinished)
             return
         }
-        val bitmap = try { Bitmap.createBitmap(width, contentHeight, Bitmap.Config.ARGB_8888) } catch (_: OutOfMemoryError) {
+
+        val bitmap = try {
+            Bitmap.createBitmap(width, contentHeight, Bitmap.Config.ARGB_8888)
+        } catch (_: OutOfMemoryError) {
             RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title, onFinished)
             return
         }
-        val originalScrollY = webView.scrollY
-        captureImageSlices(webView, bitmap, 0, originalScrollY, object : SliceCallback {
-            override fun onComplete() {
-                try {
-                    shareBitmap(context, bitmap, title)
-                } catch (_: Exception) {
-                    RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title, onFinished)
-                    return
-                } finally {
-                    if (!bitmap.isRecycled) bitmap.recycle()
-                }
-                onFinished?.invoke()
-            }
-            override fun onError() {
-                if (!bitmap.isRecycled) bitmap.recycle()
-                webView.scrollTo(0, originalScrollY)
-                RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title, onFinished)
-            }
-        })
-    }
 
-    fun captureImageSlices(webView: WebView, destination: Bitmap, nextOffset: Int, originalScrollY: Int, callback: SliceCallback) {
-        val contentHeight = getContentHeight(webView)
-        val viewportHeight = webView.height
-        if (viewportHeight <= 0 || contentHeight <= 0) {
-            callback.onError()
+        val originalScrollY = webView.scrollY
+        val originalParams = webView.layoutParams
+        val originalWidth = webView.width
+        val originalHeight = webView.height
+
+        try {
+            // Layout the real WebView to the full rendered document before
+            // drawing. This avoids stitching viewport snapshots, which was the
+            // source of blank content below the first screen.
+            val expandedParams = originalParams
+            expandedParams.height = contentHeight
+            webView.layoutParams = expandedParams
+            webView.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(contentHeight, View.MeasureSpec.EXACTLY)
+            )
+            webView.layout(0, 0, width, contentHeight)
+            webView.scrollTo(0, 0)
+
+            val canvas = Canvas(bitmap)
+            canvas.drawColor(Color.WHITE)
+            webView.draw(canvas)
+
+            shareBitmap(context, bitmap, title)
+        } catch (_: OutOfMemoryError) {
+            RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title, onFinished)
             return
-        }
-        if (nextOffset >= contentHeight) {
-            webView.scrollTo(0, originalScrollY)
-            callback.onComplete()
+        } catch (_: Exception) {
+            RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title, onFinished)
             return
-        }
-        webView.scrollTo(0, nextOffset)
-        webView.postDelayed({
+        } finally {
             try {
-                val actualOffset = webView.scrollY
-                val remaining = contentHeight - actualOffset
-                val captureHeight = Math.min(viewportHeight, remaining)
-                if (captureHeight <= 0) {
-                    webView.scrollTo(0, originalScrollY)
-                    callback.onComplete()
-                    return@postDelayed
-                }
-                val slice = Bitmap.createBitmap(webView.width, captureHeight, Bitmap.Config.ARGB_8888)
-                try {
-                    val sliceCanvas = Canvas(slice)
-                    sliceCanvas.drawColor(android.graphics.Color.WHITE)
-                    webView.draw(sliceCanvas)
-                    Canvas(destination).drawBitmap(slice, 0f, actualOffset.toFloat(), null)
-                } finally {
-                    if (!slice.isRecycled) slice.recycle()
-                }
-                val followingOffset = actualOffset + captureHeight
-                if (followingOffset >= contentHeight) {
-                    webView.scrollTo(0, originalScrollY)
-                    callback.onComplete()
-                } else captureImageSlices(webView, destination, followingOffset, originalScrollY, callback)
-            } catch (_: OutOfMemoryError) {
-                callback.onError()
+                originalParams.height = originalHeight
+                webView.layoutParams = originalParams
+                webView.measure(
+                    View.MeasureSpec.makeMeasureSpec(originalWidth, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(originalHeight, View.MeasureSpec.EXACTLY)
+                )
+                webView.layout(0, 0, originalWidth, originalHeight)
+                webView.scrollTo(0, originalScrollY)
+                webView.requestLayout()
             } catch (_: Exception) {
-                callback.onError()
             }
-        }, SLICE_SETTLE_DELAY_MS)
+            if (!bitmap.isRecycled) bitmap.recycle()
+        }
+        onFinished?.invoke()
     }
 
     private fun shareBitmap(context: Context, bitmap: Bitmap, title: String) {
@@ -154,10 +143,5 @@ object RenderedMarkdownShare {
         directory.listFiles()?.forEach { file ->
             if (file.isFile() && file.name.startsWith("markdown_") && file.name.endsWith(".png")) file.delete()
         }
-    }
-
-    interface SliceCallback {
-        fun onComplete()
-        fun onError()
     }
 }
