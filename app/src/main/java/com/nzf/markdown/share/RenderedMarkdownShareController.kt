@@ -25,7 +25,7 @@ import java.io.File
  * save the latest text, render that exact text in the existing preview WebView,
  * wait until the DOM and images settle, then delegate to the image/PDF policy.
  */
-class RenderedMarkdownShareController(private val application: Application) : Application.ActivityLifecycleCallbacks {
+class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
     private val handler = Handler(Looper.getMainLooper())
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
@@ -77,8 +77,9 @@ class RenderedMarkdownShareController(private val application: Application) : Ap
         preview.evaluateJavascript(script, ValueCallback { value ->
             val ready = value != null && value.contains("ready")
             if (ready || attempt >= MAX_RENDER_WAIT_ATTEMPTS) {
+                val safeTitle = if (title.isEmpty()) "Markdown" else title
                 try {
-                    if (!RenderedMarkdownShare.showShareOptions(activity, preview, title.ifEmpty { "Markdown" })) {
+                    if (!RenderedMarkdownShare.showShareOptions(activity, preview, safeTitle)) {
                         Toast.makeText(activity, "内容仍在渲染，请稍后重试", Toast.LENGTH_SHORT).show()
                     }
                 } finally {
