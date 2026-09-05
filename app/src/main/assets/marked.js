@@ -1,10 +1,5 @@
 /*
  * Bundled Markdown parser for the Android preview WebView.
- *
- * This file previously contained a modified legacy Marked build whose
- * synchronous render function wrote directly into #content and returned
- * undefined. The preview bridge expects the parser to RETURN HTML, so the
- * implementation below provides that contract explicitly.
  */
 ;(function (root) {
   'use strict';
@@ -43,6 +38,10 @@
     return text;
   }
 
+  function inlineLines(lines) {
+    return lines.map(inline).join('<br>');
+  }
+
   function parse(markdown) {
     var lines = String(markdown == null ? '' : markdown).replace(/\r\n?/g, '\n').split('\n');
     var html = [];
@@ -52,7 +51,7 @@
 
     function flushParagraph() {
       if (paragraph.length) {
-        html.push('<p>' + inline(paragraph.join('<br>')) + '</p>');
+        html.push('<p>' + inlineLines(paragraph) + '</p>');
         paragraph = [];
       }
     }
@@ -114,7 +113,7 @@
           i++;
           quote.push(lines[i].replace(/^>\s?/, ''));
         }
-        html.push('<blockquote><p>' + inline(quote.join('<br>')) + '</p></blockquote>');
+        html.push('<blockquote><p>' + inlineLines(quote) + '</p></blockquote>');
         continue;
       }
 
