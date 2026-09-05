@@ -111,7 +111,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
 
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                saveStatus.text = "正在保存"
+                saveStatus.text = "正在保存…"
                 handler.removeCallbacks(autosaveRunnable)
                 handler.postDelayed(autosaveRunnable, AUTOSAVE_DELAY_MS)
             }
@@ -159,6 +159,8 @@ class MarkdownEditorActivity : AppCompatActivity() {
         editorToolbar.visibility = View.VISIBLE
         editButton.isEnabled = false
         previewButton.isEnabled = true
+        editButton.alpha = 1f
+        previewButton.alpha = 0.55f
         editor.requestFocus()
     }
 
@@ -170,6 +172,8 @@ class MarkdownEditorActivity : AppCompatActivity() {
         editorToolbar.visibility = View.GONE
         editButton.isEnabled = true
         previewButton.isEnabled = false
+        editButton.alpha = 0.55f
+        previewButton.alpha = 1f
     }
 
     private fun pickImage() {
@@ -202,8 +206,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
     }
 
     private fun insertImage(uri: Uri) {
-        val markdown = "![图片]($uri)"
-        insert(markdown)
+        insert("![图片]($uri)")
         saveStatus.text = "图片已插入"
     }
 
