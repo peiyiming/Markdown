@@ -28,6 +28,6 @@ class MDApplication : Application() {
         super.onCreate()
         mContext = this
         PDFBoxResourceLoader.init(applicationContext)
-        registerActivityLifecycleCallbacks(RenderedMarkdownShareController(this))
+        registerActivityLifecycleCallbacks(RenderedMarkdownShareController())
     }
 }
