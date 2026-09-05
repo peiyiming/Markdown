@@ -49,6 +49,18 @@
                 android:textSize="12sp" />
         </LinearLayout>
 
+        <Button
+            android:id="@+id/btn_share"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginRight="4dp"
+            android:background="@drawable/qp_icon_button"
+            android:contentDescription="分享到其他应用"
+            android:text="分享"
+            android:textAllCaps="false"
+            android:textColor="@color/qp_text_primary"
+            android:textSize="12sp" />
+
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="40dp"
@@ -92,10 +104,7 @@
         </LinearLayout>
     </LinearLayout>
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/qp_divider" />
+    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/qp_divider" />
 
     <LinearLayout
         android:id="@+id/editor_content_container"
@@ -138,10 +147,7 @@
             android:visibility="gone" />
     </LinearLayout>
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/qp_divider" />
+    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/qp_divider" />
 
     <HorizontalScrollView
         android:id="@+id/editor_toolbar"
@@ -150,7 +156,6 @@
         android:background="@color/qp_surface"
         android:fillViewport="true"
         android:scrollbars="none">
-
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
@@ -158,108 +163,15 @@
             android:orientation="horizontal"
             android:paddingLeft="12dp"
             android:paddingRight="12dp">
-
-            <Button
-                android:id="@+id/btn_h1"
-                android:layout_width="48dp"
-                android:layout_height="40dp"
-                android:background="@drawable/qp_tool_button"
-                android:contentDescription="一级标题"
-                android:text="H1"
-                android:textAllCaps="false"
-                android:textColor="@color/qp_text_primary"
-                android:textStyle="bold" />
-
-            <Button
-                android:id="@+id/btn_bold"
-                android:layout_width="48dp"
-                android:layout_height="40dp"
-                android:layout_marginLeft="6dp"
-                android:background="@drawable/qp_tool_button"
-                android:contentDescription="粗体"
-                android:text="B"
-                android:textColor="@color/qp_text_primary"
-                android:textStyle="bold" />
-
-            <Button
-                android:id="@+id/btn_italic"
-                android:layout_width="48dp"
-                android:layout_height="40dp"
-                android:layout_marginLeft="6dp"
-                android:background="@drawable/qp_tool_button"
-                android:contentDescription="斜体"
-                android:text="I"
-                android:textColor="@color/qp_text_primary"
-                android:textStyle="italic" />
-
-            <Button
-                android:id="@+id/btn_quote"
-                android:layout_width="52dp"
-                android:layout_height="40dp"
-                android:layout_marginLeft="6dp"
-                android:background="@drawable/qp_tool_button"
-                android:contentDescription="引用"
-                android:text="❝"
-                android:textColor="@color/qp_text_primary"
-                android:textSize="18sp" />
-
-            <Button
-                android:id="@+id/btn_unordered_list"
-                android:layout_width="56dp"
-                android:layout_height="40dp"
-                android:layout_marginLeft="6dp"
-                android:background="@drawable/qp_tool_button"
-                android:contentDescription="无序列表"
-                android:text="• ≡"
-                android:textAllCaps="false"
-                android:textColor="@color/qp_text_primary"
-                android:textSize="13sp" />
-
-            <Button
-                android:id="@+id/btn_ordered_list"
-                android:layout_width="56dp"
-                android:layout_height="40dp"
-                android:layout_marginLeft="6dp"
-                android:background="@drawable/qp_tool_button"
-                android:contentDescription="有序列表"
-                android:text="1. ≡"
-                android:textAllCaps="false"
-                android:textColor="@color/qp_text_primary"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/btn_link"
-                android:layout_width="52dp"
-                android:layout_height="40dp"
-                android:layout_marginLeft="6dp"
-                android:background="@drawable/qp_tool_button"
-                android:contentDescription="插入链接"
-                android:text="↗"
-                android:textColor="@color/qp_text_primary"
-                android:textSize="20sp" />
-
-            <Button
-                android:id="@+id/btn_image"
-                android:layout_width="52dp"
-                android:layout_height="40dp"
-                android:layout_marginLeft="6dp"
-                android:background="@drawable/qp_tool_button"
-                android:contentDescription="插入图片"
-                android:text="▧"
-                android:textColor="@color/qp_text_primary"
-                android:textSize="20sp" />
-
-            <Button
-                android:id="@+id/btn_code"
-                android:layout_width="56dp"
-                android:layout_height="40dp"
-                android:layout_marginLeft="6dp"
-                android:background="@drawable/qp_tool_button"
-                android:contentDescription="行内代码"
-                android:text="&lt;/&gt;"
-                android:textAllCaps="false"
-                android:textColor="@color/qp_text_primary"
-                android:textSize="13sp" />
+            <Button android:id="@+id/btn_h1" android:layout_width="48dp" android:layout_height="40dp" android:background="@drawable/qp_tool_button" android:contentDescription="一级标题" android:text="H1" android:textAllCaps="false" android:textColor="@color/qp_text_primary" android:textStyle="bold" />
+            <Button android:id="@+id/btn_bold" android:layout_width="48dp" android:layout_height="40dp" android:layout_marginLeft="6dp" android:background="@drawable/qp_tool_button" android:contentDescription="粗体" android:text="B" android:textColor="@color/qp_text_primary" android:textStyle="bold" />
+            <Button android:id="@+id/btn_italic" android:layout_width="48dp" android:layout_height="40dp" android:layout_marginLeft="6dp" android:background="@drawable/qp_tool_button" android:contentDescription="斜体" android:text="I" android:textColor="@color/qp_text_primary" android:textStyle="italic" />
+            <Button android:id="@+id/btn_quote" android:layout_width="52dp" android:layout_height="40dp" android:layout_marginLeft="6dp" android:background="@drawable/qp_tool_button" android:contentDescription="引用" android:text="❝" android:textColor="@color/qp_text_primary" android:textSize="18sp" />
+            <Button android:id="@+id/btn_unordered_list" android:layout_width="56dp" android:layout_height="40dp" android:layout_marginLeft="6dp" android:background="@drawable/qp_tool_button" android:contentDescription="无序列表" android:text="• ≡" android:textAllCaps="false" android:textColor="@color/qp_text_primary" android:textSize="13sp" />
+            <Button android:id="@+id/btn_ordered_list" android:layout_width="56dp" android:layout_height="40dp" android:layout_marginLeft="6dp" android:background="@drawable/qp_tool_button" android:contentDescription="有序列表" android:text="1. ≡" android:textAllCaps="false" android:textColor="@color/qp_text_primary" android:textSize="12sp" />
+            <Button android:id="@+id/btn_link" android:layout_width="52dp" android:layout_height="40dp" android:layout_marginLeft="6dp" android:background="@drawable/qp_tool_button" android:contentDescription="插入链接" android:text="↗" android:textColor="@color/qp_text_primary" android:textSize="20sp" />
+            <Button android:id="@+id/btn_image" android:layout_width="52dp" android:layout_height="40dp" android:layout_marginLeft="6dp" android:background="@drawable/qp_tool_button" android:contentDescription="插入图片" android:text="▧" android:textColor="@color/qp_text_primary" android:textSize="20sp" />
+            <Button android:id="@+id/btn_code" android:layout_width="56dp" android:layout_height="40dp" android:layout_marginLeft="6dp" android:background="@drawable/qp_tool_button" android:contentDescription="行内代码" android:text="&lt;/&gt;" android:textAllCaps="false" android:textColor="@color/qp_text_primary" android:textSize="13sp" />
         </LinearLayout>
     </HorizontalScrollView>
 </LinearLayout>
