@@ -42,36 +42,46 @@
       throw new Error('marked.js API 不兼容');
     }
 
-    function prepareImages(content) {
+    function captureScroll() {
+      var y = window.scrollY || window.pageYOffset || 0;
+      var maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      return { y: y, ratio: maxY > 0 ? y / maxY : 0 };
+    }
+
+    function restoreScroll(position) {
+      window.requestAnimationFrame(function () {
+        var maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+        var target = Math.min(position.y, maxY);
+        if (position.y > maxY && maxY > 0) target = position.ratio * maxY;
+        window.scrollTo(0, Math.max(0, target));
+      });
+    }
+
+    function prepareImages(content, position) {
       var images = content.getElementsByTagName('img');
       for (var i = 0; i < images.length; i++) {
         var image = images[i];
         image.loading = 'lazy';
         image.decoding = 'async';
+        image.onload = function () { restoreScroll(position); };
         image.onerror = function () {
           var fallback = document.createElement('div');
           fallback.className = 'image-error';
           fallback.textContent = '图片无法加载：' + (this.alt || '请检查图片访问权限');
           if (this.parentNode) this.parentNode.replaceChild(fallback, this);
+          restoreScroll(position);
         };
       }
-    }
-
-    function restoreScroll(scrollY) {
-      window.requestAnimationFrame(function () {
-        var maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-        window.scrollTo(0, Math.min(scrollY, maxY));
-      });
     }
 
     function renderMarkdown(source) {
       var content = document.getElementById('content');
       var value = source == null ? '' : String(source);
-      var previousScrollY = window.scrollY || window.pageYOffset || 0;
+      var previousPosition = captureScroll();
 
       if (!value.trim()) {
         content.innerHTML = '<div class="empty">开始创作后，内容会显示在这里</div>';
-        restoreScroll(previousScrollY);
+        restoreScroll(previousPosition);
         return true;
       }
 
@@ -79,12 +89,12 @@
         var html = parseMarkdown(value);
         if (typeof html !== 'string') throw new Error('Markdown Parser 未返回 HTML');
         content.innerHTML = html;
-        prepareImages(content);
-        restoreScroll(previousScrollY);
+        prepareImages(content, previousPosition);
+        restoreScroll(previousPosition);
         return true;
       } catch (error) {
         content.innerHTML = '<div class="error">Markdown 渲染失败：' + escapeHtml(error && error.message ? error.message : '未知错误') + '</div>';
-        restoreScroll(previousScrollY);
+        restoreScroll(previousPosition);
         return false;
       }
     }
