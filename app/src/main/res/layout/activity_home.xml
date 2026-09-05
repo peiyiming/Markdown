@@ -11,8 +11,8 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
         <LinearLayout
             android:layout_width="0dp"
@@ -41,10 +41,10 @@
             android:id="@+id/btn_new_document"
             android:layout_width="wrap_content"
             android:layout_height="48dp"
+            android:backgroundTint="#2F6B5F"
             android:text="新建"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:backgroundTint="#2F6B5F" />
+            android:textSize="14sp" />
     </LinearLayout>
 
     <EditText
@@ -71,11 +71,52 @@
         android:textSize="17sp"
         android:textStyle="bold" />
 
-    <android.support.v7.widget.RecyclerView
-        android:id="@+id/rv_home_list"
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:clipToPadding="false"
-        android:paddingBottom="24dp" />
+        android:layout_weight="1">
+
+        <android.support.v7.widget.RecyclerView
+            android:id="@+id/rv_home_list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingBottom="24dp" />
+
+        <LinearLayout
+            android:id="@+id/layout_empty_state"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="32dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="还没有文档"
+                android:textColor="#1C1C1A"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:text="从第一篇 Markdown 开始，记录你的想法。"
+                android:textColor="#6B6B66"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btn_empty_create"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:layout_marginTop="20dp"
+                android:backgroundTint="#2F6B5F"
+                android:text="创建第一篇文档"
+                android:textColor="#FFFFFF" />
+        </LinearLayout>
+    </FrameLayout>
 </LinearLayout>
