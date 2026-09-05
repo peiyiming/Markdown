@@ -21,6 +21,7 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var adapter: DocumentAdapter
     private lateinit var documentList: RecyclerView
     private lateinit var emptyState: LinearLayout
+    private lateinit var searchEmptyState: LinearLayout
     private var allDocuments: List<File> = emptyList()
     private var currentQuery: String = ""
 
@@ -31,6 +32,7 @@ class HomeActivity : AppCompatActivity() {
         adapter = DocumentAdapter({ open(it) }, { manage(it) })
         documentList = findViewById(R.id.rv_home_list)
         emptyState = findViewById(R.id.layout_empty_state)
+        searchEmptyState = findViewById(R.id.layout_search_empty_state)
         documentList.layoutManager = LinearLayoutManager(this)
         documentList.adapter = adapter
         findViewById<Button>(R.id.btn_new_document).setOnClickListener { createDocument() }
@@ -60,9 +62,14 @@ class HomeActivity : AppCompatActivity() {
         val visibleDocuments = if (q.isEmpty()) allDocuments else allDocuments.filter {
             it.name.toLowerCase().contains(q)
         }
+        val hasDocuments = allDocuments.isNotEmpty()
+        val hasResults = visibleDocuments.isNotEmpty()
+        val isSearching = q.isNotEmpty()
+
         adapter.submit(visibleDocuments)
-        documentList.visibility = if (visibleDocuments.isEmpty()) View.GONE else View.VISIBLE
-        emptyState.visibility = if (allDocuments.isEmpty()) View.VISIBLE else View.GONE
+        documentList.visibility = if (hasResults) View.VISIBLE else View.GONE
+        emptyState.visibility = if (!hasDocuments) View.VISIBLE else View.GONE
+        searchEmptyState.visibility = if (hasDocuments && isSearching && !hasResults) View.VISIBLE else View.GONE
     }
 
     private fun createDocument() {
