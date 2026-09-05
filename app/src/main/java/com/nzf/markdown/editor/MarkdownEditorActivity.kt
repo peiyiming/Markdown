@@ -25,12 +25,6 @@ import com.nzf.markdown.document.DocumentStore
 import org.json.JSONObject
 import java.io.File
 
-/**
- * Focused Markdown editor for the commercial MVP.
- *
- * Supports both traditional manual preview and a live split view. The live
- * renderer is debounced so WebView updates do not run for every keystroke.
- */
 class MarkdownEditorActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_DOCUMENT_PATH = "document_path"
@@ -39,11 +33,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
         private const val REQUEST_PICK_IMAGE = 4101
     }
 
-    private enum class EditorMode {
-        EDIT,
-        PREVIEW,
-        LIVE
-    }
+    private enum class EditorMode { EDIT, PREVIEW, LIVE }
 
     private lateinit var editor: EditText
     private lateinit var preview: WebView
@@ -63,9 +53,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private val autosaveRunnable = Runnable { saveDocument() }
     private val livePreviewRunnable = Runnable {
-        if (currentMode == EditorMode.LIVE) {
-            renderMarkdown(editor.text.toString())
-        }
+        if (currentMode == EditorMode.LIVE) renderMarkdown(editor.text.toString())
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -98,6 +86,7 @@ class MarkdownEditorActivity : AppCompatActivity() {
         editor.setSelection(editor.text.length)
 
         findViewById<Button>(R.id.btn_back).setOnClickListener { finish() }
+        findViewById<Button>(R.id.btn_share).setOnClickListener { shareDocument() }
         titleView.setOnClickListener { showRenameDialog() }
         titleView.contentDescription = "重命名文档"
 
@@ -129,20 +118,14 @@ class MarkdownEditorActivity : AppCompatActivity() {
 
         editor.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                if (!suppressEditorWatcher && before == 0 && count == 1 && start < s!!.length && s[start] == '\n') {
-                    insertedNewlineIndex = start
-                } else if (!suppressEditorWatcher) {
-                    insertedNewlineIndex = -1
-                }
-
+                if (!suppressEditorWatcher && before == 0 && count == 1 && start < s!!.length && s[start] == '\n') insertedNewlineIndex = start
+                else if (!suppressEditorWatcher) insertedNewlineIndex = -1
                 if (!suppressEditorWatcher) {
                     scheduleAutosave()
                     scheduleLivePreview()
                 }
             }
-
             override fun afterTextChanged(s: Editable?) {
                 if (suppressEditorWatcher || s == null || insertedNewlineIndex < 0) return
                 val newlineIndex = insertedNewlineIndex
@@ -158,6 +141,26 @@ class MarkdownEditorActivity : AppCompatActivity() {
         titleView.text = if (documentTitle.trim().isEmpty()) "未命名文档" else documentTitle
     }
 
+    private fun shareDocument() {
+        val markdown = editor.text.toString()
+        if (markdown.trim().isEmpty()) {
+            Toast.makeText(this, "文档内容为空，暂时无法分享", Toast.LENGTH_SHORT).show()
+            return
+        }
+        saveDocument()
+        val title = titleView.text.toString()
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TITLE, title)
+            putExtra(Intent.EXTRA_TEXT, markdown)
+        }
+        try {
+            startActivity(Intent.createChooser(shareIntent, "分享到"))
+        } catch (e: Exception) {
+            Toast.makeText(this, "没有可用于分享的应用", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun showRenameDialog() {
         val input = EditText(this).apply {
             setSingleLine(true)
@@ -165,64 +168,37 @@ class MarkdownEditorActivity : AppCompatActivity() {
             selectAll()
             setPadding(48, 8, 48, 8)
         }
-        AlertDialog.Builder(this)
-            .setTitle("重命名文档")
-            .setView(input)
+        AlertDialog.Builder(this).setTitle("重命名文档").setView(input)
             .setNegativeButton("取消", null)
-            .setPositiveButton("保存") { _, _ -> renameDocument(input.text.toString()) }
-            .show()
+            .setPositiveButton("保存") { _, _ -> renameDocument(input.text.toString()) }.show()
     }
 
     private fun renameDocument(name: String) {
         val current = requireDocument()
         val renamed = store.rename(current, name)
         if (renamed == null) {
-            Toast.makeText(this, "名称不能为空或已存在同名文档", Toast.LENGTH_SHORT).show()
-            return
+            Toast.makeText(this, "名称不能为空或已存在同名文档", Toast.LENGTH_SHORT).show(); return
         }
-        documentFile = renamed
-        updateDocumentTitle(renamed)
-        saveStatus.text = "已重命名"
+        documentFile = renamed; updateDocumentTitle(renamed); saveStatus.text = "已重命名"
     }
 
     private fun showEditor() {
-        currentMode = EditorMode.EDIT
-        editor.visibility = View.VISIBLE
-        preview.visibility = View.GONE
-        liveModeDivider.visibility = View.GONE
-        editorToolbar.visibility = View.VISIBLE
-        setModeSelection(EditorMode.EDIT)
-        editor.requestFocus()
+        currentMode = EditorMode.EDIT; editor.visibility = View.VISIBLE; preview.visibility = View.GONE
+        liveModeDivider.visibility = View.GONE; editorToolbar.visibility = View.VISIBLE
+        setModeSelection(EditorMode.EDIT); editor.requestFocus()
     }
-
     private fun showPreview() {
-        currentMode = EditorMode.PREVIEW
-        handler.removeCallbacks(livePreviewRunnable)
-        saveDocument()
-        renderMarkdown(editor.text.toString())
-        editor.visibility = View.GONE
-        preview.visibility = View.VISIBLE
-        liveModeDivider.visibility = View.GONE
-        editorToolbar.visibility = View.GONE
-        setModeSelection(EditorMode.PREVIEW)
+        currentMode = EditorMode.PREVIEW; handler.removeCallbacks(livePreviewRunnable); saveDocument()
+        renderMarkdown(editor.text.toString()); editor.visibility = View.GONE; preview.visibility = View.VISIBLE
+        liveModeDivider.visibility = View.GONE; editorToolbar.visibility = View.GONE; setModeSelection(EditorMode.PREVIEW)
     }
-
     private fun showLivePreview() {
-        currentMode = EditorMode.LIVE
-        editor.visibility = View.VISIBLE
-        preview.visibility = View.VISIBLE
-        liveModeDivider.visibility = View.VISIBLE
-        editorToolbar.visibility = View.VISIBLE
-        setModeSelection(EditorMode.LIVE)
-        renderMarkdown(editor.text.toString())
-        editor.requestFocus()
+        currentMode = EditorMode.LIVE; editor.visibility = View.VISIBLE; preview.visibility = View.VISIBLE
+        liveModeDivider.visibility = View.VISIBLE; editorToolbar.visibility = View.VISIBLE
+        setModeSelection(EditorMode.LIVE); renderMarkdown(editor.text.toString()); editor.requestFocus()
     }
-
     private fun setModeSelection(mode: EditorMode) {
-        editButton.isEnabled = mode != EditorMode.EDIT
-        previewButton.isEnabled = mode != EditorMode.PREVIEW
-        liveButton.isEnabled = mode != EditorMode.LIVE
-
+        editButton.isEnabled = mode != EditorMode.EDIT; previewButton.isEnabled = mode != EditorMode.PREVIEW; liveButton.isEnabled = mode != EditorMode.LIVE
         editButton.alpha = if (mode == EditorMode.EDIT) 1f else 0.55f
         previewButton.alpha = if (mode == EditorMode.PREVIEW) 1f else 0.55f
         liveButton.alpha = if (mode == EditorMode.LIVE) 1f else 0.55f
@@ -230,163 +206,67 @@ class MarkdownEditorActivity : AppCompatActivity() {
 
     private fun pickImage() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "image/*"
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-        }
-        startActivityForResult(intent, REQUEST_PICK_IMAGE)
+            addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }; startActivityForResult(intent, REQUEST_PICK_IMAGE)
     }
-
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != REQUEST_PICK_IMAGE || resultCode != RESULT_OK) return
-        val uri = data?.data ?: return
-        persistImagePermission(uri, data.flags)
-        insertImage(uri)
+        val uri = data?.data ?: return; persistImagePermission(uri, data.flags); insertImage(uri)
     }
-
     private fun persistImagePermission(uri: Uri, resultFlags: Int) {
         val flags = resultFlags and Intent.FLAG_GRANT_READ_URI_PERMISSION
         if (flags == 0) return
-        try {
-            contentResolver.takePersistableUriPermission(uri, flags)
-        } catch (ignored: SecurityException) {
-            // Some document providers do not support persistable grants. The
-            // current process can still use the URI until the provider revokes it.
-        }
+        try { contentResolver.takePersistableUriPermission(uri, flags) } catch (ignored: SecurityException) { }
     }
-
-    private fun insertImage(uri: Uri) {
-        insert("![图片]($uri)")
-        saveStatus.text = "图片已插入"
-    }
-
+    private fun insertImage(uri: Uri) { insert("![图片]($uri)"); saveStatus.text = "图片已插入" }
     private fun insert(value: String) {
-        val start = editor.selectionStart.coerceAtLeast(0)
-        editor.text.insert(start, value)
+        val start = editor.selectionStart.coerceAtLeast(0); editor.text.insert(start, value)
         editor.setSelection((start + value.length).coerceAtMost(editor.text.length))
     }
-
     private fun insertAtLineStart(prefix: String) {
-        val cursor = editor.selectionStart.coerceAtLeast(0)
-        val content = editor.text
-        var lineStart = cursor
+        val cursor = editor.selectionStart.coerceAtLeast(0); val content = editor.text; var lineStart = cursor
         while (lineStart > 0 && content[lineStart - 1] != '\n') lineStart--
-        content.insert(lineStart, prefix)
-        editor.setSelection(cursor + prefix.length)
+        content.insert(lineStart, prefix); editor.setSelection(cursor + prefix.length)
     }
-
     private fun prefixSelectedLines(prefix: String) {
-        val content = editor.text
-        val start = editor.selectionStart.coerceAtLeast(0)
-        val end = editor.selectionEnd.coerceAtLeast(start)
-        var lineStart = start
-        while (lineStart > 0 && content[lineStart - 1] != '\n') lineStart--
-        var lineEnd = end
-        while (lineEnd < content.length && content[lineEnd] != '\n') lineEnd++
-
-        val selectedText = content.substring(lineStart, lineEnd)
-        val replacement = selectedText.split("\n").joinToString("\n") { line ->
-            if (line.startsWith(prefix)) line else prefix + line
-        }
-        content.replace(lineStart, lineEnd, replacement)
-        editor.setSelection(lineStart, lineStart + replacement.length)
+        val content = editor.text; val start = editor.selectionStart.coerceAtLeast(0); val end = editor.selectionEnd.coerceAtLeast(start)
+        var lineStart = start; while (lineStart > 0 && content[lineStart - 1] != '\n') lineStart--
+        var lineEnd = end; while (lineEnd < content.length && content[lineEnd] != '\n') lineEnd++
+        val replacement = content.substring(lineStart, lineEnd).split("\n").joinToString("\n") { if (it.startsWith(prefix)) it else prefix + it }
+        content.replace(lineStart, lineEnd, replacement); editor.setSelection(lineStart, lineStart + replacement.length)
     }
-
     private fun continueMarkdownList(content: Editable, newlineIndex: Int) {
         if (newlineIndex < 0 || newlineIndex > content.length) return
-
-        var lineStart = newlineIndex
-        while (lineStart > 0 && content[lineStart - 1] != '\n') lineStart--
+        var lineStart = newlineIndex; while (lineStart > 0 && content[lineStart - 1] != '\n') lineStart--
         val previousLine = content.substring(lineStart, newlineIndex)
-
         val ordered = Regex("^(\\s*)(\\d+)\\.\\s*(.*)$").matchEntire(previousLine)
         if (ordered != null) {
-            val indent = ordered.groupValues[1]
-            val number = ordered.groupValues[2].toIntOrNull() ?: return
-            val body = ordered.groupValues[3]
-
+            val indent = ordered.groupValues[1]; val number = ordered.groupValues[2].toIntOrNull() ?: return; val body = ordered.groupValues[3]
             suppressEditorWatcher = true
-            if (body.trim().isEmpty()) {
-                content.delete(lineStart, newlineIndex)
-                editor.setSelection(lineStart)
-            } else {
-                val nextPrefix = indent + (number + 1) + ". "
-                content.insert(newlineIndex + 1, nextPrefix)
-                editor.setSelection(newlineIndex + 1 + nextPrefix.length)
-            }
-            suppressEditorWatcher = false
-            scheduleAutosave()
-            scheduleLivePreview()
-            return
+            if (body.trim().isEmpty()) { content.delete(lineStart, newlineIndex); editor.setSelection(lineStart) }
+            else { val nextPrefix = indent + (number + 1) + ". "; content.insert(newlineIndex + 1, nextPrefix); editor.setSelection(newlineIndex + 1 + nextPrefix.length) }
+            suppressEditorWatcher = false; scheduleAutosave(); scheduleLivePreview(); return
         }
-
         val unordered = Regex("^(\\s*)([-+*])\\s*(.*)$").matchEntire(previousLine)
         if (unordered != null) {
-            val indent = unordered.groupValues[1]
-            val marker = unordered.groupValues[2]
-            val body = unordered.groupValues[3]
-
+            val indent = unordered.groupValues[1]; val marker = unordered.groupValues[2]; val body = unordered.groupValues[3]
             suppressEditorWatcher = true
-            if (body.trim().isEmpty()) {
-                content.delete(lineStart, newlineIndex)
-                editor.setSelection(lineStart)
-            } else {
-                val nextPrefix = indent + marker + " "
-                content.insert(newlineIndex + 1, nextPrefix)
-                editor.setSelection(newlineIndex + 1 + nextPrefix.length)
-            }
-            suppressEditorWatcher = false
-            scheduleAutosave()
-            scheduleLivePreview()
+            if (body.trim().isEmpty()) { content.delete(lineStart, newlineIndex); editor.setSelection(lineStart) }
+            else { val nextPrefix = indent + marker + " "; content.insert(newlineIndex + 1, nextPrefix); editor.setSelection(newlineIndex + 1 + nextPrefix.length) }
+            suppressEditorWatcher = false; scheduleAutosave(); scheduleLivePreview()
         }
     }
-
     private fun wrap(prefix: String, suffix: String) {
-        val start = editor.selectionStart.coerceAtLeast(0)
-        val end = editor.selectionEnd.coerceAtLeast(start)
-        val selected = editor.text.substring(start, end)
-        editor.text.replace(start, end, prefix + selected + suffix)
-        editor.setSelection(start + prefix.length, start + prefix.length + selected.length)
+        val start = editor.selectionStart.coerceAtLeast(0); val end = editor.selectionEnd.coerceAtLeast(start); val selected = editor.text.substring(start, end)
+        editor.text.replace(start, end, prefix + selected + suffix); editor.setSelection(start + prefix.length, start + prefix.length + selected.length)
     }
-
-    private fun scheduleAutosave() {
-        saveStatus.text = "正在保存…"
-        handler.removeCallbacks(autosaveRunnable)
-        handler.postDelayed(autosaveRunnable, AUTOSAVE_DELAY_MS)
-    }
-
-    private fun scheduleLivePreview() {
-        if (currentMode != EditorMode.LIVE) return
-        handler.removeCallbacks(livePreviewRunnable)
-        handler.postDelayed(livePreviewRunnable, LIVE_PREVIEW_DELAY_MS)
-    }
-
-    private fun saveDocument() {
-        documentFile?.let {
-            store.save(it, editor.text.toString())
-            saveStatus.text = "已保存"
-        }
-    }
-
+    private fun scheduleAutosave() { saveStatus.text = "正在保存…"; handler.removeCallbacks(autosaveRunnable); handler.postDelayed(autosaveRunnable, AUTOSAVE_DELAY_MS) }
+    private fun scheduleLivePreview() { if (currentMode != EditorMode.LIVE) return; handler.removeCallbacks(livePreviewRunnable); handler.postDelayed(livePreviewRunnable, LIVE_PREVIEW_DELAY_MS) }
+    private fun saveDocument() { documentFile?.let { store.save(it, editor.text.toString()); saveStatus.text = "已保存" } }
     private fun requireDocument(): File = checkNotNull(documentFile)
-
-    private fun renderMarkdown(markdown: String) {
-        if (!previewReady) return
-        preview.evaluateJavascript("renderMarkdown(" + JSONObject.quote(markdown) + ")", null)
-    }
-
-    override fun onPause() {
-        saveDocument()
-        super.onPause()
-    }
-
-    override fun onDestroy() {
-        handler.removeCallbacks(autosaveRunnable)
-        handler.removeCallbacks(livePreviewRunnable)
-        preview.loadUrl("about:blank")
-        preview.destroy()
-        super.onDestroy()
-    }
+    private fun renderMarkdown(markdown: String) { if (previewReady) preview.evaluateJavascript("renderMarkdown(" + JSONObject.quote(markdown) + ")", null) }
+    override fun onPause() { saveDocument(); super.onPause() }
+    override fun onDestroy() { handler.removeCallbacks(autosaveRunnable); handler.removeCallbacks(livePreviewRunnable); preview.loadUrl("about:blank"); preview.destroy(); super.onDestroy() }
 }
