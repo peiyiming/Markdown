@@ -3,27 +3,29 @@ package com.nzf.markdown.share
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
-import android.os.Build
-import android.os.Bundle
-import android.os.CancellationSignal
-import android.os.ParcelFileDescriptor
-import android.print.MarkdownLayoutResultCallback
-import android.print.MarkdownWriteResultCallback
-import android.print.PageRange
-import android.print.PrintAttributes
-import android.print.PrintDocumentAdapter
+import android.graphics.Color
+import android.graphics.pdf.PdfDocument
 import android.support.v4.content.FileProvider
+import android.view.View
 import android.webkit.WebView
+import android.widget.Toast
 import java.io.File
+import java.io.FileOutputStream
+import kotlin.math.ceil
 
 /**
- * Generates PDF directly from the complete rendered WebView document.
+ * Generates a paginated PDF from the complete rendered WebView document.
  *
- * The WebView print pipeline is document-aware, so PDF export does not depend
- * on manually drawing one viewport or creating one giant bitmap. This is the
- * preferred path for very tall images and content that follows them.
+ * The previous implementation manually drove PrintDocumentAdapter callbacks.
+ * On API 19 those callbacks have package-private constructors; a compile-time
+ * bridge can still fail at runtime on real devices, which resulted in a PDF
+ * action that appeared to do nothing. This implementation uses only public
+ * API 19 APIs and writes a PdfDocument directly.
  */
 object RenderedMarkdownPdfShare {
+    private const val PAGE_WIDTH = 595
+    private const val PAGE_HEIGHT = 842
+    private const val PAGE_MARGIN = 24
 
     fun shareRenderedWebView(
         context: Context,
@@ -31,117 +33,101 @@ object RenderedMarkdownPdfShare {
         title: String,
         onFinished: (() -> Unit)? = null
     ) {
-        if (webView.width <= 0 || webView.height <= 0) {
+        val sourceWidth = webView.width
+        val sourceHeight = RenderedMarkdownShare.getContentHeight(webView)
+        if (sourceWidth <= 0 || sourceHeight <= 0) {
+            Toast.makeText(context, "内容尚未完成渲染，无法生成 PDF", Toast.LENGTH_SHORT).show()
             onFinished?.invoke()
             return
         }
 
         val directory = File(context.cacheDir, "markdown_share")
         if (!directory.exists() && !directory.mkdirs()) {
+            Toast.makeText(context, "无法创建 PDF 文件", Toast.LENGTH_SHORT).show()
             onFinished?.invoke()
             return
         }
 
         cleanupOldPdf(directory)
         val output = File(directory, "markdown_${System.currentTimeMillis()}.pdf")
-        val adapter = createPrintAdapter(webView, safeDocumentName(title))
-        val attributes = PrintAttributes.Builder()
-            .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
-            .setResolution(PrintAttributes.Resolution("markdown", "Markdown", 300, 300))
-            .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
-            .build()
+        val originalScrollY = webView.scrollY
+        val originalParams = webView.layoutParams
+        val originalWidth = webView.width
+        val originalHeight = webView.height
+        var document: PdfDocument? = null
 
         try {
-            adapter.onStart()
-            adapter.onLayout(
-                null,
-                attributes,
-                CancellationSignal(),
-                MarkdownLayoutResultCallback(object : MarkdownLayoutResultCallback.Listener {
-                    override fun onFinished(info: android.print.PrintDocumentInfo?, changed: Boolean) {
-                        if (info == null || info.pageCount <= 0) {
-                            finishWithCleanup(adapter, output, onFinished)
-                            return
-                        }
-                        writeDocument(context, adapter, output, title, onFinished)
-                    }
-
-                    override fun onFailed(error: CharSequence?) {
-                        finishWithCleanup(adapter, output, onFinished)
-                    }
-
-                    override fun onCancelled() {
-                        finishWithCleanup(adapter, output, onFinished)
-                    }
-                }),
-                Bundle()
+            // Make the WebView represent the whole document before drawing it
+            // into successive PDF pages. PdfDocument clips each page, so no
+            // giant bitmap is required for long documents.
+            originalParams.height = sourceHeight
+            webView.layoutParams = originalParams
+            webView.measure(
+                View.MeasureSpec.makeMeasureSpec(sourceWidth, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(sourceHeight, View.MeasureSpec.EXACTLY)
             )
+            webView.layout(0, 0, sourceWidth, sourceHeight)
+            webView.scrollTo(0, 0)
+
+            val contentWidth = PAGE_WIDTH - PAGE_MARGIN * 2
+            val contentHeight = PAGE_HEIGHT - PAGE_MARGIN * 2
+            val scale = contentWidth.toFloat() / sourceWidth.toFloat()
+            val scaledDocumentHeight = sourceHeight.toFloat() * scale
+            val pageCount = Math.max(1, ceil(scaledDocumentHeight / contentHeight.toFloat()).toInt())
+
+            document = PdfDocument()
+            var pageIndex = 0
+            while (pageIndex < pageCount) {
+                val pageInfo = PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageIndex + 1).create()
+                val page = document.startPage(pageInfo)
+                val canvas = page.canvas
+                canvas.drawColor(Color.WHITE)
+                canvas.save()
+                canvas.translate(PAGE_MARGIN.toFloat(), PAGE_MARGIN.toFloat() - pageIndex * contentHeight.toFloat())
+                canvas.scale(scale, scale)
+                webView.draw(canvas)
+                canvas.restore()
+                document.finishPage(page)
+                pageIndex++
+            }
+
+            FileOutputStream(output).use { stream ->
+                document.writeTo(stream)
+                stream.flush()
+            }
+            document.close()
+            document = null
+
+            if (!output.exists() || output.length() <= 0L) {
+                output.delete()
+                Toast.makeText(context, "PDF 生成失败", Toast.LENGTH_SHORT).show()
+            } else {
+                sharePdf(context, output, title)
+            }
+        } catch (_: OutOfMemoryError) {
+            output.delete()
+            Toast.makeText(context, "文档过大，PDF 生成失败", Toast.LENGTH_LONG).show()
         } catch (_: Exception) {
-            finishWithCleanup(adapter, output, onFinished)
-        }
-    }
-
-    private fun createPrintAdapter(webView: WebView, documentName: String): PrintDocumentAdapter {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            webView.createPrintDocumentAdapter(documentName)
-        } else {
-            @Suppress("DEPRECATION")
-            webView.createPrintDocumentAdapter()
-        }
-    }
-
-    private fun writeDocument(
-        context: Context,
-        adapter: PrintDocumentAdapter,
-        output: File,
-        title: String,
-        onFinished: (() -> Unit)?
-    ) {
-        val descriptor = try {
-            ParcelFileDescriptor.open(
-                output,
-                ParcelFileDescriptor.MODE_CREATE or
-                    ParcelFileDescriptor.MODE_TRUNCATE or
-                    ParcelFileDescriptor.MODE_READ_WRITE
-            )
-        } catch (_: Exception) {
-            finishWithCleanup(adapter, output, onFinished)
-            return
-        }
-
-        try {
-            adapter.onWrite(
-                arrayOf(PageRange.ALL_PAGES),
-                descriptor,
-                CancellationSignal(),
-                MarkdownWriteResultCallback(object : MarkdownWriteResultCallback.Listener {
-                    override fun onFinished(pages: Array<PageRange>?) {
-                        closeDescriptor(descriptor)
-                        try {
-                            if (output.exists() && output.length() > 0L) {
-                                sharePdf(context, output, title)
-                            } else {
-                                output.delete()
-                            }
-                        } finally {
-                            finishAdapter(adapter, onFinished)
-                        }
-                    }
-
-                    override fun onFailed(error: CharSequence?) {
-                        closeDescriptor(descriptor)
-                        finishWithCleanup(adapter, output, onFinished)
-                    }
-
-                    override fun onCancelled() {
-                        closeDescriptor(descriptor)
-                        finishWithCleanup(adapter, output, onFinished)
-                    }
-                })
-            )
-        } catch (_: Exception) {
-            closeDescriptor(descriptor)
-            finishWithCleanup(adapter, output, onFinished)
+            output.delete()
+            Toast.makeText(context, "PDF 生成失败，请稍后重试", Toast.LENGTH_SHORT).show()
+        } finally {
+            try {
+                document?.close()
+            } catch (_: Exception) {
+            }
+            try {
+                originalParams.height = originalHeight
+                webView.layoutParams = originalParams
+                webView.measure(
+                    View.MeasureSpec.makeMeasureSpec(originalWidth, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(originalHeight, View.MeasureSpec.EXACTLY)
+                )
+                webView.layout(0, 0, originalWidth, originalHeight)
+                webView.scrollTo(0, originalScrollY)
+                webView.requestLayout()
+            } catch (_: Exception) {
+            }
+            onFinished?.invoke()
         }
     }
 
@@ -162,37 +148,8 @@ object RenderedMarkdownPdfShare {
             context.startActivity(Intent.createChooser(intent, "分享 PDF"))
         } catch (_: Exception) {
             output.delete()
+            Toast.makeText(context, "无法打开 PDF 分享面板", Toast.LENGTH_SHORT).show()
         }
-    }
-
-    private fun finishWithCleanup(
-        adapter: PrintDocumentAdapter,
-        output: File,
-        onFinished: (() -> Unit)?
-    ) {
-        output.delete()
-        finishAdapter(adapter, onFinished)
-    }
-
-    private fun finishAdapter(adapter: PrintDocumentAdapter, onFinished: (() -> Unit)?) {
-        try {
-            adapter.onFinish()
-        } catch (_: Exception) {
-        }
-        onFinished?.invoke()
-    }
-
-    private fun closeDescriptor(descriptor: ParcelFileDescriptor) {
-        try {
-            descriptor.close()
-        } catch (_: Exception) {
-        }
-    }
-
-    private fun safeDocumentName(title: String): String {
-        val trimmed = title.trim()
-        val normalized = if (trimmed.isEmpty()) "Markdown" else trimmed
-        return normalized.replace(Regex("[\\\\/:*?\"<>|]"), "_")
     }
 
     private fun cleanupOldPdf(directory: File) {
