@@ -12,7 +12,9 @@ class DocumentStore(private val context: Context) {
         ?.sortedByDescending { it.lastModified() } ?: emptyList()
 
     fun create(name: String): File {
-        val safe = name.trim().ifEmpty { "Untitled" }.replace(Regex("[\\/:*?\"<>|]"), "_")
+        val trimmedName = name.trim()
+        val safe = (if (trimmedName.isEmpty()) "Untitled" else trimmedName)
+            .replace(Regex("[\\/:*?\"<>|]"), "_")
         var file = File(root, if (safe.endsWith(".md", true)) safe else "$safe.md")
         var index = 1
         while (file.exists()) {
@@ -24,7 +26,9 @@ class DocumentStore(private val context: Context) {
     }
 
     fun rename(file: File, name: String): File? {
-        val safe = name.trim().ifEmpty { return null }.replace(Regex("[\\/:*?\"<>|]"), "_")
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) return null
+        val safe = trimmedName.replace(Regex("[\\/:*?\"<>|]"), "_")
         val target = File(root, if (safe.endsWith(".md", true)) safe else "$safe.md")
         if (target.exists() && target.absolutePath != file.absolutePath) return null
         return if (file.renameTo(target)) target else null
