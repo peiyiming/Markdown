@@ -11,7 +11,7 @@
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingLeft="12dp"
-        android:paddingRight="16dp">
+        android:paddingRight="12dp">
 
         <Button
             android:id="@+id/btn_back"
@@ -59,25 +59,36 @@
 
             <Button
                 android:id="@+id/btn_edit_mode"
-                android:layout_width="52dp"
+                android:layout_width="46dp"
                 android:layout_height="34dp"
                 android:background="@drawable/qp_mode_button"
                 android:contentDescription="编辑模式"
                 android:text="编辑"
                 android:textAllCaps="false"
                 android:textColor="@color/qp_text_primary"
-                android:textSize="13sp" />
+                android:textSize="12sp" />
 
             <Button
                 android:id="@+id/btn_preview_mode"
-                android:layout_width="52dp"
+                android:layout_width="46dp"
                 android:layout_height="34dp"
                 android:background="@drawable/qp_mode_button"
-                android:contentDescription="预览模式"
+                android:contentDescription="手动预览模式"
                 android:text="预览"
                 android:textAllCaps="false"
                 android:textColor="@color/qp_text_primary"
-                android:textSize="13sp" />
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/btn_live_mode"
+                android:layout_width="46dp"
+                android:layout_height="34dp"
+                android:background="@drawable/qp_mode_button"
+                android:contentDescription="实时双栏模式"
+                android:text="实时"
+                android:textAllCaps="false"
+                android:textColor="@color/qp_text_primary"
+                android:textSize="12sp" />
         </LinearLayout>
     </LinearLayout>
 
@@ -86,10 +97,12 @@
         android:layout_height="1dp"
         android:background="@color/qp_divider" />
 
-    <FrameLayout
+    <LinearLayout
+        android:id="@+id/editor_content_container"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
+        android:orientation="vertical"
         android:paddingLeft="16dp"
         android:paddingTop="8dp"
         android:paddingRight="16dp">
@@ -97,7 +110,8 @@
         <EditText
             android:id="@+id/et_markdown_editor"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
             android:background="@android:color/transparent"
             android:fontFamily="sans"
             android:gravity="top|start"
@@ -109,12 +123,20 @@
             android:textCursorDrawable="@null"
             android:textSize="17sp" />
 
+        <View
+            android:id="@+id/live_mode_divider"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/qp_divider"
+            android:visibility="gone" />
+
         <WebView
             android:id="@+id/web_markdown_preview"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
             android:visibility="gone" />
-    </FrameLayout>
+    </LinearLayout>
 
     <View
         android:layout_width="match_parent"
