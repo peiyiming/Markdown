@@ -25,7 +25,10 @@ import java.io.File
  * uses the bundled marked.js renderer.
  */
 class MarkdownEditorActivity : AppCompatActivity() {
-    companion object { const val EXTRA_DOCUMENT_PATH = "document_path" }
+    companion object {
+        const val EXTRA_DOCUMENT_PATH = "document_path"
+        private const val AUTOSAVE_DELAY_MS = 700L
+    }
 
     private lateinit var editor: EditText
     private lateinit var preview: WebView
@@ -141,9 +144,5 @@ class MarkdownEditorActivity : AppCompatActivity() {
         preview.loadUrl("about:blank")
         preview.destroy()
         super.onDestroy()
-    }
-
-    private companion object {
-        const val AUTOSAVE_DELAY_MS = 700L
     }
 }
