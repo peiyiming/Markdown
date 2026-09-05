@@ -22,11 +22,21 @@ jobs:
           distribution: temurin
           java-version: '8'
 
-      - name: Grant Gradle wrapper permission
-        run: chmod +x gradlew
+      # The legacy repository does not contain gradlew/gradle-wrapper files.
+      # Android Gradle Plugin 3.0.0 is compatible with Gradle 4.1.
+      - name: Set up Gradle 4.1
+        run: |
+          curl -fsSL https://services.gradle.org/distributions/gradle-4.1-bin.zip -o /tmp/gradle-4.1-bin.zip
+          unzip -q /tmp/gradle-4.1-bin.zip -d /tmp
+          echo "/tmp/gradle-4.1/bin" >> $GITHUB_PATH
+
+      - name: Verify build environment
+        run: |
+          java -version
+          gradle --version
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: gradle assembleDebug --stacktrace --no-daemon
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
