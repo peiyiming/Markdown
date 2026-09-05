@@ -27,9 +27,8 @@ import java.io.File
 /**
  * Focused Markdown editor for the commercial MVP.
  *
- * The writing surface stays content-first. Formatting actions are deliberately
- * lightweight and insert portable Markdown instead of introducing a proprietary
- * rich-text model.
+ * The writing surface stays content-first. Formatting actions insert portable
+ * Markdown while common list interactions behave like a real mobile editor.
  */
 class MarkdownEditorActivity : AppCompatActivity() {
     companion object {
@@ -48,6 +47,8 @@ class MarkdownEditorActivity : AppCompatActivity() {
     private lateinit var store: DocumentStore
     private var documentFile: File? = null
     private var previewReady = false
+    private var suppressEditorWatcher = false
+    private var insertedNewlineIndex = -1
     private val handler = Handler(Looper.getMainLooper())
     private val autosaveRunnable = Runnable { saveDocument() }
 
@@ -111,12 +112,23 @@ class MarkdownEditorActivity : AppCompatActivity() {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
 
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                saveStatus.text = "正在保存…"
-                handler.removeCallbacks(autosaveRunnable)
-                handler.postDelayed(autosaveRunnable, AUTOSAVE_DELAY_MS)
+                if (!suppressEditorWatcher && before == 0 && count == 1 && start < s!!.length && s[start] == '\n') {
+                    insertedNewlineIndex = start
+                } else if (!suppressEditorWatcher) {
+                    insertedNewlineIndex = -1
+                }
+
+                if (!suppressEditorWatcher) {
+                    scheduleAutosave()
+                }
             }
 
-            override fun afterTextChanged(s: Editable?) = Unit
+            override fun afterTextChanged(s: Editable?) {
+                if (suppressEditorWatcher || s == null || insertedNewlineIndex < 0) return
+                val newlineIndex = insertedNewlineIndex
+                insertedNewlineIndex = -1
+                continueMarkdownList(s, newlineIndex)
+            }
         })
         showEditor()
     }
@@ -242,12 +254,65 @@ class MarkdownEditorActivity : AppCompatActivity() {
         editor.setSelection(lineStart, lineStart + replacement.length)
     }
 
+    private fun continueMarkdownList(content: Editable, newlineIndex: Int) {
+        if (newlineIndex < 0 || newlineIndex > content.length) return
+
+        var lineStart = newlineIndex
+        while (lineStart > 0 && content[lineStart - 1] != '\n') lineStart--
+        val previousLine = content.substring(lineStart, newlineIndex)
+
+        val ordered = Regex("^(\\s*)(\\d+)\\.\\s*(.*)$").matchEntire(previousLine)
+        if (ordered != null) {
+            val indent = ordered.groupValues[1]
+            val number = ordered.groupValues[2].toIntOrNull() ?: return
+            val body = ordered.groupValues[3]
+
+            suppressEditorWatcher = true
+            if (body.trim().isEmpty()) {
+                content.delete(lineStart, newlineIndex)
+                editor.setSelection(lineStart)
+            } else {
+                val nextPrefix = indent + (number + 1) + ". "
+                content.insert(newlineIndex + 1, nextPrefix)
+                editor.setSelection(newlineIndex + 1 + nextPrefix.length)
+            }
+            suppressEditorWatcher = false
+            scheduleAutosave()
+            return
+        }
+
+        val unordered = Regex("^(\\s*)([-+*])\\s*(.*)$").matchEntire(previousLine)
+        if (unordered != null) {
+            val indent = unordered.groupValues[1]
+            val marker = unordered.groupValues[2]
+            val body = unordered.groupValues[3]
+
+            suppressEditorWatcher = true
+            if (body.trim().isEmpty()) {
+                content.delete(lineStart, newlineIndex)
+                editor.setSelection(lineStart)
+            } else {
+                val nextPrefix = indent + marker + " "
+                content.insert(newlineIndex + 1, nextPrefix)
+                editor.setSelection(newlineIndex + 1 + nextPrefix.length)
+            }
+            suppressEditorWatcher = false
+            scheduleAutosave()
+        }
+    }
+
     private fun wrap(prefix: String, suffix: String) {
         val start = editor.selectionStart.coerceAtLeast(0)
         val end = editor.selectionEnd.coerceAtLeast(start)
         val selected = editor.text.substring(start, end)
         editor.text.replace(start, end, prefix + selected + suffix)
         editor.setSelection(start + prefix.length, start + prefix.length + selected.length)
+    }
+
+    private fun scheduleAutosave() {
+        saveStatus.text = "正在保存…"
+        handler.removeCallbacks(autosaveRunnable)
+        handler.postDelayed(autosaveRunnable, AUTOSAVE_DELAY_MS)
     }
 
     private fun saveDocument() {
