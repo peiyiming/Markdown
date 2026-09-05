@@ -1,17 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#3F51B5</color>
-    <color name="colorPrimaryDark">#303F9F</color>
-    <color name="colorAccent">#FF4081</color>
+    <color name="colorPrimary">#2F6B5F</color>
+    <color name="colorPrimaryDark">#24564D</color>
+    <color name="colorAccent">#2F6B5F</color>
 
+    <!-- Quiet Productivity design tokens -->
+    <color name="qp_background">#F7F7F5</color>
+    <color name="qp_surface">#FFFFFF</color>
+    <color name="qp_surface_secondary">#F1F1EE</color>
+    <color name="qp_text_primary">#1C1C1A</color>
+    <color name="qp_text_secondary">#6B6B66</color>
+    <color name="qp_text_tertiary">#A0A09A</color>
+    <color name="qp_brand">#2F6B5F</color>
+    <color name="qp_divider">#E7E7E1</color>
+
+    <!-- Legacy colors retained for existing screens -->
     <color name="backgroundTop">#444a5a</color>
     <color name="backgroundBottom">#f5f6fa</color>
     <color name="header_green">#b3d577</color>
-
     <color name="item_name_color">#aab4ba</color>
     <color name="item_info_color">#bdc5cc</color>
     <color name="item_separator_color">#c8c9cc</color>
-
     <color name="details_name_color">#333333</color>
     <color name="details_info_color">@color/item_name_color</color>
     <color name="details_status_color">#90ba47</color>
