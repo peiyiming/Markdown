@@ -455,9 +455,14 @@ class MarkdownEditorActivity : AppCompatActivity() {
     private fun insertImage(uri: Uri) {
         val start = editor.selectionStart
         val prefix = if (start > 0 && editor.text[start - 1] != '\n') "\n" else ""
-        val value = prefix + "![图片]($uri)\n"
+        val imageMarkdown = "![图片]($uri)"
+        val insertionEnd = start + prefix.length + imageMarkdown.length
+        val suffix = if (insertionEnd < editor.text.length && editor.text[start] != '\n') "\n" else ""
+        val value = prefix + imageMarkdown + suffix
+        suppressEditorWatcher = true
         editor.text.insert(start, value)
         editor.setSelection(start + value.length)
+        suppressEditorWatcher = false
         saveStatus.text = "图片已插入"
         notifyEditorMutation()
     }
