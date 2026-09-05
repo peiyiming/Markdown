@@ -21,9 +21,9 @@ import java.io.File
 /**
  * Connects the editor share button to the rendered Markdown share pipeline.
  *
- * The existing editor is kept as the single source of truth. Before sharing we
- * save the latest text, render that exact text in the existing preview WebView,
- * wait until the DOM and images settle, then delegate to the image/PDF policy.
+ * The preview remains laid out until the user finishes selecting an export
+ * format. Restoring it to GONE before the image/PDF capture would collapse the
+ * WebView and could produce blank or clipped exports.
  */
 class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
     private val handler = Handler(Looper.getMainLooper())
@@ -52,7 +52,13 @@ class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
         preview.post {
             val source = JSONObject.quote(markdown)
             preview.evaluateJavascript("renderMarkdown(" + source + ");") {
-                waitForRenderedContent(activity, preview, titleView?.text?.toString().orEmpty(), originalVisibility, 0)
+                waitForRenderedContent(
+                    activity,
+                    preview,
+                    titleView?.text?.toString().orEmpty(),
+                    originalVisibility,
+                    0
+                )
             }
         }
     }
@@ -73,17 +79,23 @@ class RenderedMarkdownShareController : Application.ActivityLifecycleCallbacks {
         originalVisibility: Int,
         attempt: Int
     ) {
-        val script = "(function(){var imgs=document.images||[];for(var i=0;i<imgs.length;i++){if(!imgs[i].complete)return 'waiting';}return document.readyState==='complete'?'ready':'waiting';})()"
+        val script = "(function(){var imgs=document.images||[];for(var i=0;i<imgs.length;i++){if(!imgs[i].complete)return 'waiting';}var root=document.getElementById('content');return root&&root.scrollHeight>0?'ready':'waiting';})()"
         preview.evaluateJavascript(script, ValueCallback { value ->
             val ready = value != null && value.contains("ready")
             if (ready || attempt >= MAX_RENDER_WAIT_ATTEMPTS) {
                 val safeTitle = if (title.isEmpty()) "Markdown" else title
-                try {
-                    if (!RenderedMarkdownShare.showShareOptions(activity, preview, safeTitle)) {
-                        Toast.makeText(activity, "内容仍在渲染，请稍后重试", Toast.LENGTH_SHORT).show()
-                    }
-                } finally {
-                    preview.visibility = originalVisibility
+                val restorePreview = {
+                    if (!activity.isFinishing) preview.visibility = originalVisibility
+                }
+                val shown = RenderedMarkdownShare.showShareOptions(
+                    activity,
+                    preview,
+                    safeTitle,
+                    restorePreview
+                )
+                if (!shown) {
+                    restorePreview.invoke()
+                    Toast.makeText(activity, "内容仍在渲染，请稍后重试", Toast.LENGTH_SHORT).show()
                 }
             } else {
                 handler.postDelayed({
