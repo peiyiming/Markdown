@@ -64,6 +64,7 @@
       var images = content.getElementsByTagName('img');
       var pending = images.length;
       var restoreScheduled = false;
+      var settled = false;
 
       function scheduleRestore() {
         if (version !== renderVersion || restoreScheduled) return;
@@ -74,8 +75,9 @@
         });
       }
 
-      function finishImage(image, failed) {
-        if (version !== renderVersion) return;
+      function settleImage(image, failed) {
+        if (version !== renderVersion || image.__markdownImageSettled) return;
+        image.__markdownImageSettled = true;
         if (failed && image.parentNode) {
           var fallback = document.createElement('div');
           fallback.className = 'image-error';
@@ -83,10 +85,14 @@
           image.parentNode.replaceChild(fallback, image);
         }
         pending--;
-        if (pending <= 0) scheduleRestore();
+        if (pending <= 0) {
+          settled = true;
+          scheduleRestore();
+        }
       }
 
       if (pending === 0) {
+        settled = true;
         scheduleRestore();
         return;
       }
@@ -95,14 +101,21 @@
         var image = images[i];
         image.loading = 'lazy';
         image.decoding = 'async';
-        image.onload = function () { finishImage(this, false); };
-        image.onerror = function () { finishImage(this, true); };
+        image.onload = function () { settleImage(this, false); };
+        image.onerror = function () { settleImage(this, true); };
         if (image.complete) {
           window.requestAnimationFrame((function (readyImage) {
-            return function () { finishImage(readyImage, readyImage.naturalWidth === 0); };
+            return function () { settleImage(readyImage, readyImage.naturalWidth === 0); };
           })(image));
         }
       }
+
+      window.setTimeout(function () {
+        if (version !== renderVersion || settled) return;
+        for (var j = 0; j < images.length; j++) {
+          settleImage(images[j], images[j].naturalWidth === 0);
+        }
+      }, 4000);
     }
 
     function renderMarkdown(source) {
