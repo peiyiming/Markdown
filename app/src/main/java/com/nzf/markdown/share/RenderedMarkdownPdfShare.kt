@@ -7,6 +7,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.ParcelFileDescriptor
+import android.print.MarkdownLayoutResultCallback
+import android.print.MarkdownWriteResultCallback
 import android.print.PageRange
 import android.print.PrintAttributes
 import android.print.PrintDocumentAdapter
@@ -17,9 +19,9 @@ import java.io.File
 /**
  * Generates PDF directly from the complete rendered WebView document.
  *
- * WebView's print pipeline is document-aware and does not depend on manually
- * scrolling and drawing individual viewports. This is substantially more
- * reliable for very tall images and for content that follows those images.
+ * The WebView print pipeline is document-aware, so PDF export does not depend
+ * on manually drawing one viewport or creating one giant bitmap. This is the
+ * preferred path for very tall images and content that follows them.
  */
 object RenderedMarkdownPdfShare {
 
@@ -49,32 +51,34 @@ object RenderedMarkdownPdfShare {
             .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
             .build()
 
-        adapter.onLayout(
-            null,
-            attributes,
-            null,
-            object : PrintDocumentAdapter.LayoutResultCallback() {
-                override fun onLayoutFinished(info: android.print.PrintDocumentInfo?, changed: Boolean) {
-                    if (info == null || info.pageCount == 0) {
-                        output.delete()
-                        onFinished?.invoke()
-                        return
+        try {
+            adapter.onStart()
+            adapter.onLayout(
+                null,
+                attributes,
+                CancellationSignal(),
+                MarkdownLayoutResultCallback(object : MarkdownLayoutResultCallback.Listener {
+                    override fun onFinished(info: android.print.PrintDocumentInfo?, changed: Boolean) {
+                        if (info == null || info.pageCount <= 0) {
+                            finishWithCleanup(adapter, output, onFinished)
+                            return
+                        }
+                        writeDocument(context, adapter, output, title, onFinished)
                     }
-                    writeDocument(context, adapter, output, title, onFinished)
-                }
 
-                override fun onLayoutFailed(error: CharSequence?) {
-                    output.delete()
-                    onFinished?.invoke()
-                }
+                    override fun onFailed(error: CharSequence?) {
+                        finishWithCleanup(adapter, output, onFinished)
+                    }
 
-                override fun onLayoutCancelled() {
-                    output.delete()
-                    onFinished?.invoke()
-                }
-            },
-            Bundle()
-        )
+                    override fun onCancelled() {
+                        finishWithCleanup(adapter, output, onFinished)
+                    }
+                }),
+                Bundle()
+            )
+        } catch (_: Exception) {
+            finishWithCleanup(adapter, output, onFinished)
+        }
     }
 
     private fun createPrintAdapter(webView: WebView, documentName: String): PrintDocumentAdapter {
@@ -96,38 +100,49 @@ object RenderedMarkdownPdfShare {
         val descriptor = try {
             ParcelFileDescriptor.open(
                 output,
-                ParcelFileDescriptor.MODE_CREATE or ParcelFileDescriptor.MODE_TRUNCATE or ParcelFileDescriptor.MODE_READ_WRITE
+                ParcelFileDescriptor.MODE_CREATE or
+                    ParcelFileDescriptor.MODE_TRUNCATE or
+                    ParcelFileDescriptor.MODE_READ_WRITE
             )
         } catch (_: Exception) {
-            output.delete()
-            onFinished?.invoke()
+            finishWithCleanup(adapter, output, onFinished)
             return
         }
 
-        adapter.onWrite(
-            arrayOf(PageRange.ALL_PAGES),
-            descriptor,
-            CancellationSignal(),
-            object : PrintDocumentAdapter.WriteResultCallback() {
-                override fun onWriteFinished(pages: Array<PageRange>) {
-                    closeDescriptor(descriptor)
-                    sharePdf(context, output, title)
-                    onFinished?.invoke()
-                }
+        try {
+            adapter.onWrite(
+                arrayOf(PageRange.ALL_PAGES),
+                descriptor,
+                CancellationSignal(),
+                MarkdownWriteResultCallback(object : MarkdownWriteResultCallback.Listener {
+                    override fun onFinished(pages: Array<PageRange>?) {
+                        closeDescriptor(descriptor)
+                        try {
+                            if (output.exists() && output.length() > 0L) {
+                                sharePdf(context, output, title)
+                            } else {
+                                output.delete()
+                            }
+                        } finally {
+                            finishAdapter(adapter, onFinished)
+                        }
+                    }
 
-                override fun onWriteFailed(error: CharSequence?) {
-                    closeDescriptor(descriptor)
-                    output.delete()
-                    onFinished?.invoke()
-                }
+                    override fun onFailed(error: CharSequence?) {
+                        closeDescriptor(descriptor)
+                        finishWithCleanup(adapter, output, onFinished)
+                    }
 
-                override fun onWriteCancelled() {
-                    closeDescriptor(descriptor)
-                    output.delete()
-                    onFinished?.invoke()
-                }
-            }
-        )
+                    override fun onCancelled() {
+                        closeDescriptor(descriptor)
+                        finishWithCleanup(adapter, output, onFinished)
+                    }
+                })
+            )
+        } catch (_: Exception) {
+            closeDescriptor(descriptor)
+            finishWithCleanup(adapter, output, onFinished)
+        }
     }
 
     private fun sharePdf(context: Context, output: File, title: String) {
@@ -150,6 +165,23 @@ object RenderedMarkdownPdfShare {
         }
     }
 
+    private fun finishWithCleanup(
+        adapter: PrintDocumentAdapter,
+        output: File,
+        onFinished: (() -> Unit)?
+    ) {
+        output.delete()
+        finishAdapter(adapter, onFinished)
+    }
+
+    private fun finishAdapter(adapter: PrintDocumentAdapter, onFinished: (() -> Unit)?) {
+        try {
+            adapter.onFinish()
+        } catch (_: Exception) {
+        }
+        onFinished?.invoke()
+    }
+
     private fun closeDescriptor(descriptor: ParcelFileDescriptor) {
         try {
             descriptor.close()
@@ -158,7 +190,8 @@ object RenderedMarkdownPdfShare {
     }
 
     private fun safeDocumentName(title: String): String {
-        val normalized = title.trim().ifEmpty { "Markdown" }
+        val trimmed = title.trim()
+        val normalized = if (trimmed.isEmpty()) "Markdown" else trimmed
         return normalized.replace(Regex("[\\\\/:*?\"<>|]"), "_")
     }
 
