@@ -11,7 +11,6 @@ import android.webkit.WebView
 import android.widget.Toast
 import java.io.File
 import java.io.FileOutputStream
-import kotlin.math.ceil
 
 /**
  * Generates a paginated PDF from the complete rendered WebView document.
@@ -57,9 +56,6 @@ object RenderedMarkdownPdfShare {
         var document: PdfDocument? = null
 
         try {
-            // Make the WebView represent the whole document before drawing it
-            // into successive PDF pages. PdfDocument clips each page, so no
-            // giant bitmap is required for long documents.
             originalParams.height = sourceHeight
             webView.layoutParams = originalParams
             webView.measure(
@@ -73,29 +69,40 @@ object RenderedMarkdownPdfShare {
             val contentHeight = PAGE_HEIGHT - PAGE_MARGIN * 2
             val scale = contentWidth.toFloat() / sourceWidth.toFloat()
             val scaledDocumentHeight = sourceHeight.toFloat() * scale
-            val pageCount = Math.max(1, ceil(scaledDocumentHeight / contentHeight.toFloat()).toInt())
+            val pageCount = Math.max(
+                1,
+                Math.ceil(scaledDocumentHeight / contentHeight.toFloat()).toInt()
+            )
 
-            document = PdfDocument()
+            val pdfDocument = PdfDocument()
+            document = pdfDocument
             var pageIndex = 0
             while (pageIndex < pageCount) {
-                val pageInfo = PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageIndex + 1).create()
-                val page = document.startPage(pageInfo)
+                val pageInfo = PdfDocument.PageInfo.Builder(
+                    PAGE_WIDTH,
+                    PAGE_HEIGHT,
+                    pageIndex + 1
+                ).create()
+                val page = pdfDocument.startPage(pageInfo)
                 val canvas = page.canvas
                 canvas.drawColor(Color.WHITE)
                 canvas.save()
-                canvas.translate(PAGE_MARGIN.toFloat(), PAGE_MARGIN.toFloat() - pageIndex * contentHeight.toFloat())
+                canvas.translate(
+                    PAGE_MARGIN.toFloat(),
+                    PAGE_MARGIN.toFloat() - pageIndex * contentHeight.toFloat()
+                )
                 canvas.scale(scale, scale)
                 webView.draw(canvas)
                 canvas.restore()
-                document.finishPage(page)
+                pdfDocument.finishPage(page)
                 pageIndex++
             }
 
             FileOutputStream(output).use { stream ->
-                document.writeTo(stream)
+                pdfDocument.writeTo(stream)
                 stream.flush()
             }
-            document.close()
+            pdfDocument.close()
             document = null
 
             if (!output.exists() || output.length() <= 0L) {
