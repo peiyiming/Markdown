@@ -1,12 +1,13 @@
 package com.nzf.markdown.share
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.net.Uri
+import android.support.v4.content.FileProvider
 import android.webkit.WebView
-import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.ceil
@@ -87,10 +88,12 @@ object RenderedMarkdownShare {
                 }
                 output.flush()
             }
-            uris += FileProvider.getUriForFile(
-                context,
-                context.packageName + ".fileprovider",
-                file
+            uris.add(
+                FileProvider.getUriForFile(
+                    context,
+                    context.packageName + ".fileprovider",
+                    file
+                )
             )
         }
 
@@ -108,7 +111,7 @@ object RenderedMarkdownShare {
             }
         }.apply {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            clipData = android.content.ClipData.newUri(context.contentResolver, title, uris.first())
+            clipData = ClipData.newUri(context.contentResolver, title, uris.first())
         }
 
         context.startActivity(Intent.createChooser(intent, "分享到"))
