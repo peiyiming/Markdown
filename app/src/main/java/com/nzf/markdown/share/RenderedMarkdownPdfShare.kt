@@ -4,22 +4,20 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Picture
 import android.graphics.pdf.PdfDocument
 import android.support.v4.content.FileProvider
-import android.view.View
-import android.webkit.WebView
 import android.widget.Toast
 import java.io.File
 import java.io.FileOutputStream
 
 /**
- * Generates a paginated PDF from the complete rendered WebView document.
+ * Generates a paginated PDF from the complete recorded WebView picture.
  *
- * The previous implementation manually drove PrintDocumentAdapter callbacks.
- * On API 19 those callbacks have package-private constructors; a compile-time
- * bridge can still fail at runtime on real devices, which resulted in a PDF
- * action that appeared to do nothing. This implementation uses only public
- * API 19 APIs and writes a PdfDocument directly.
+ * The previous implementation drew WebView directly on each PDF page. On real
+ * devices that only painted the current viewport, so every page after the first
+ * screen was blank. A Picture records the complete rendered document and can be
+ * translated across PDF pages without relying on WebView's viewport drawing.
  */
 object RenderedMarkdownPdfShare {
     private const val PAGE_WIDTH = 595
@@ -28,12 +26,27 @@ object RenderedMarkdownPdfShare {
 
     fun shareRenderedWebView(
         context: Context,
-        webView: WebView,
+        webView: android.webkit.WebView,
         title: String,
         onFinished: (() -> Unit)? = null
     ) {
-        val sourceWidth = webView.width
-        val sourceHeight = RenderedMarkdownShare.getContentHeight(webView)
+        val picture = RenderedMarkdownShare.captureRenderedPicture(webView)
+        if (picture == null) {
+            Toast.makeText(context, "内容尚未完成渲染，无法生成 PDF", Toast.LENGTH_SHORT).show()
+            onFinished?.invoke()
+            return
+        }
+        shareRenderedPicture(context, picture, title, onFinished)
+    }
+
+    fun shareRenderedPicture(
+        context: Context,
+        picture: Picture,
+        title: String,
+        onFinished: (() -> Unit)? = null
+    ) {
+        val sourceWidth = picture.width
+        val sourceHeight = picture.height
         if (sourceWidth <= 0 || sourceHeight <= 0) {
             Toast.makeText(context, "内容尚未完成渲染，无法生成 PDF", Toast.LENGTH_SHORT).show()
             onFinished?.invoke()
@@ -49,33 +62,17 @@ object RenderedMarkdownPdfShare {
 
         cleanupOldPdf(directory)
         val output = File(directory, "markdown_${System.currentTimeMillis()}.pdf")
-        val originalScrollY = webView.scrollY
-        val originalParams = webView.layoutParams
-        val originalWidth = webView.width
-        val originalHeight = webView.height
+        val contentWidth = PAGE_WIDTH - PAGE_MARGIN * 2
+        val contentHeight = PAGE_HEIGHT - PAGE_MARGIN * 2
+        val scale = contentWidth.toFloat() / sourceWidth.toFloat()
+        val pageSourceHeight = contentHeight.toFloat() / scale
+        val pageCount = Math.max(
+            1,
+            Math.ceil(sourceHeight.toDouble() / pageSourceHeight.toDouble()).toInt()
+        )
         var document: PdfDocument? = null
 
         try {
-            originalParams.height = sourceHeight
-            webView.layoutParams = originalParams
-            webView.measure(
-                View.MeasureSpec.makeMeasureSpec(sourceWidth, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(sourceHeight, View.MeasureSpec.EXACTLY)
-            )
-            webView.layout(0, 0, sourceWidth, sourceHeight)
-            webView.scrollTo(0, 0)
-
-            val contentWidth = PAGE_WIDTH - PAGE_MARGIN * 2
-            val contentHeight = PAGE_HEIGHT - PAGE_MARGIN * 2
-            val scale = contentWidth.toFloat() / sourceWidth.toFloat()
-            val scaledDocumentHeight = sourceHeight.toFloat() * scale
-            val pageCount = Math.max(
-                1,
-                Math.ceil(
-                    scaledDocumentHeight.toDouble() / contentHeight.toDouble()
-                ).toInt()
-            )
-
             val pdfDocument = PdfDocument()
             document = pdfDocument
             var pageIndex = 0
@@ -89,12 +86,10 @@ object RenderedMarkdownPdfShare {
                 val canvas = page.canvas
                 canvas.drawColor(Color.WHITE)
                 canvas.save()
-                canvas.translate(
-                    PAGE_MARGIN.toFloat(),
-                    PAGE_MARGIN.toFloat() - pageIndex * contentHeight.toFloat()
-                )
+                canvas.translate(PAGE_MARGIN.toFloat(), PAGE_MARGIN.toFloat())
                 canvas.scale(scale, scale)
-                webView.draw(canvas)
+                canvas.translate(0f, -pageIndex.toFloat() * pageSourceHeight)
+                picture.draw(canvas)
                 canvas.restore()
                 pdfDocument.finishPage(page)
                 pageIndex++
@@ -122,18 +117,6 @@ object RenderedMarkdownPdfShare {
         } finally {
             try {
                 document?.close()
-            } catch (_: Exception) {
-            }
-            try {
-                originalParams.height = originalHeight
-                webView.layoutParams = originalParams
-                webView.measure(
-                    View.MeasureSpec.makeMeasureSpec(originalWidth, View.MeasureSpec.EXACTLY),
-                    View.MeasureSpec.makeMeasureSpec(originalHeight, View.MeasureSpec.EXACTLY)
-                )
-                webView.layout(0, 0, originalWidth, originalHeight)
-                webView.scrollTo(0, originalScrollY)
-                webView.requestLayout()
             } catch (_: Exception) {
             }
             onFinished?.invoke()
