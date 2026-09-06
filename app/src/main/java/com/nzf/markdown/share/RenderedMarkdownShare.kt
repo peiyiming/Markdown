@@ -6,9 +6,9 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Picture
 import android.support.v4.content.FileProvider
 import android.support.v7.app.AlertDialog
-import android.view.View
 import android.webkit.WebView
 import java.io.File
 import java.io.FileOutputStream
@@ -16,104 +16,77 @@ import java.io.FileOutputStream
 /**
  * Shares the complete rendered WebView document.
  *
- * A WebView scroll screenshot is not reliable: WebView.draw() paints the
- * current viewport and can leave the off-screen area blank. For image export
- * we only allow documents that are safe to hold in one bitmap, temporarily lay
- * the WebView out to its full document height, and draw the complete document
- * in one pass. Tall documents are exported as PDF instead.
+ * WebView.draw() only proved reliable for the visible viewport on real devices.
+ * Export therefore captures WebView's recorded document picture first and draws
+ * that complete picture into either an image or a paginated PDF.
  */
 object RenderedMarkdownShare {
     private const val MAX_IMAGE_HEIGHT = 12_000
     private const val MAX_IMAGE_MEMORY_BYTES = 48L * 1024L * 1024L
 
     fun showShareOptions(context: Context, webView: WebView, title: String, onFinished: (() -> Unit)? = null): Boolean {
-        val width = webView.width
-        val contentHeight = getContentHeight(webView)
-        if (width <= 0 || contentHeight <= 0) return false
-        if (canShareAsImage(width, contentHeight)) {
+        val picture = captureRenderedPicture(webView)
+        if (picture == null) return false
+        if (canShareAsImage(picture.width, picture.height)) {
             AlertDialog.Builder(context)
                 .setTitle("选择分享格式")
                 .setItems(arrayOf("图片", "PDF")) { _, which ->
-                    if (which == 0) shareRenderedWebViewAsImage(context, webView, title, onFinished)
-                    else RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title, onFinished)
+                    if (which == 0) shareRenderedPictureAsImage(context, picture, title, onFinished)
+                    else RenderedMarkdownPdfShare.shareRenderedPicture(context, picture, title, onFinished)
                 }
                 .setOnCancelListener { onFinished?.invoke() }
                 .show()
         } else {
             android.widget.Toast.makeText(context, "当前内容较长，已使用 PDF 分享以保证完整内容", android.widget.Toast.LENGTH_LONG).show()
-            RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title, onFinished)
+            RenderedMarkdownPdfShare.shareRenderedPicture(context, picture, title, onFinished)
         }
         return true
     }
 
+    @Suppress("DEPRECATION")
+    fun captureRenderedPicture(webView: WebView): Picture? {
+        return try {
+            val picture = webView.capturePicture()
+            if (picture.width > 0 && picture.height > 0) picture else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun getContentHeight(webView: WebView): Int {
+        val picture = captureRenderedPicture(webView)
+        if (picture != null) return picture.height
         return (webView.contentHeight.toFloat() * webView.scale).toInt()
     }
 
     private fun canShareAsImage(width: Int, contentHeight: Int): Boolean {
-        if (contentHeight > MAX_IMAGE_HEIGHT) return false
+        if (width <= 0 || contentHeight <= 0 || contentHeight > MAX_IMAGE_HEIGHT) return false
         val estimatedBytes = width.toLong() * contentHeight.toLong() * 4L
         return estimatedBytes > 0L && estimatedBytes <= MAX_IMAGE_MEMORY_BYTES
     }
 
-    private fun shareRenderedWebViewAsImage(context: Context, webView: WebView, title: String, onFinished: (() -> Unit)?) {
-        val width = webView.width
-        val contentHeight = getContentHeight(webView)
-        if (!canShareAsImage(width, contentHeight)) {
-            RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title, onFinished)
+    private fun shareRenderedPictureAsImage(context: Context, picture: Picture, title: String, onFinished: (() -> Unit)?) {
+        if (!canShareAsImage(picture.width, picture.height)) {
+            RenderedMarkdownPdfShare.shareRenderedPicture(context, picture, title, onFinished)
             return
         }
 
         val bitmap = try {
-            Bitmap.createBitmap(width, contentHeight, Bitmap.Config.ARGB_8888)
+            Bitmap.createBitmap(picture.width, picture.height, Bitmap.Config.ARGB_8888)
         } catch (_: OutOfMemoryError) {
-            RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title, onFinished)
+            RenderedMarkdownPdfShare.shareRenderedPicture(context, picture, title, onFinished)
             return
         }
 
-        val originalScrollY = webView.scrollY
-        val originalParams = webView.layoutParams
-        val originalWidth = webView.width
-        val originalHeight = webView.height
-
         try {
-            // Layout the real WebView to the full rendered document before
-            // drawing. This avoids stitching viewport snapshots, which was the
-            // source of blank content below the first screen.
-            val expandedParams = originalParams
-            expandedParams.height = contentHeight
-            webView.layoutParams = expandedParams
-            webView.measure(
-                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(contentHeight, View.MeasureSpec.EXACTLY)
-            )
-            webView.layout(0, 0, width, contentHeight)
-            webView.scrollTo(0, 0)
-
             val canvas = Canvas(bitmap)
             canvas.drawColor(Color.WHITE)
-            webView.draw(canvas)
-
+            picture.draw(canvas)
             shareBitmap(context, bitmap, title)
         } catch (_: OutOfMemoryError) {
-            RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title, onFinished)
-            return
-        } catch (_: Exception) {
-            RenderedMarkdownPdfShare.shareRenderedWebView(context, webView, title, onFinished)
+            RenderedMarkdownPdfShare.shareRenderedPicture(context, picture, title, onFinished)
             return
         } finally {
-            try {
-                originalParams.height = originalHeight
-                webView.layoutParams = originalParams
-                webView.measure(
-                    View.MeasureSpec.makeMeasureSpec(originalWidth, View.MeasureSpec.EXACTLY),
-                    View.MeasureSpec.makeMeasureSpec(originalHeight, View.MeasureSpec.EXACTLY)
-                )
-                webView.layout(0, 0, originalWidth, originalHeight)
-                webView.scrollTo(0, originalScrollY)
-                webView.requestLayout()
-            } catch (_: Exception) {
-            }
             if (!bitmap.isRecycled) bitmap.recycle()
         }
         onFinished?.invoke()
