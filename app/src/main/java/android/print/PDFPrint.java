@@ -1,5 +1,6 @@
 package android.print;
 
+import android.os.Build;
 import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.ParcelFileDescriptor;
@@ -48,7 +49,12 @@ public final class PDFPrint {
                     .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
                     .build();
 
-            final PrintDocumentAdapter adapter = webView.createPrintDocumentAdapter(file.getName());
+            final PrintDocumentAdapter adapter;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                adapter = webView.createPrintDocumentAdapter(file.getName());
+            } else {
+                adapter = webView.createPrintDocumentAdapter();
+            }
             adapter.onLayout(
                     null,
                     attributes,
